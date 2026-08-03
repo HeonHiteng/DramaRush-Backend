@@ -18,6 +18,10 @@ supabase/
     20260802000004_functions.sql       handle_new_user() signup trigger,
                                         unlock_episode_with_coins(), redeem_ad_reward()
     20260802000005_seed_content.sql    the 8 mock series / 54 episodes from the app repo
+    20260803000001_video_storage.sql   public 'episode-videos' storage bucket for real video files
+scripts/
+  add-episode.js                       uploads a video file + upserts its episodes row (see below)
+  .env.example                         template for scripts/.env (service role key, gitignored)
 ```
 
 ## One-time setup
@@ -73,13 +77,44 @@ inert until you configure the providers:
 Until configured, tapping those buttons in the app will surface Supabase's "provider not enabled"
 error — expected, not a bug.
 
-## Content updates
+## Adding content (real videos)
 
 `series` and `episodes` are public-read, no-client-write (enforced by RLS — see
-`20260802000003_rls_policies.sql`). To add or edit content today, write SQL against those tables
-using the Supabase dashboard's SQL Editor or Table Editor (which uses your service-role
-credentials, bypassing RLS). A proper admin tool is listed as a production follow-up in the app
-repo's README.
+`20260802000003_rls_policies.sql`). `episodes.video_uri` is just a plain URL — the app doesn't care
+where it's hosted, only that it resolves to a playable `.mp4`. Video files are stored in a public
+Supabase Storage bucket (`episode-videos`, created by `20260803000001_video_storage.sql`); uploads
+are denied for regular clients by default (no insert policy on `storage.objects` for this bucket)
+and only happen through `scripts/add-episode.js` using the service-role key, which bypasses RLS.
+
+**One-time setup for the script:**
+```bash
+npm install                       # from this repo's root
+cp scripts/.env.example scripts/.env
+```
+Fill in `scripts/.env` with your Project URL and **service_role** key (Project Settings → API —
+not the anon key; this one bypasses RLS, so never commit it or use it in the app).
+
+**Adding an episode:**
+```bash
+npm run add-episode -- \
+  --series crimson-contract --number 9 --title "The Reckoning" \
+  --file ./my-episode.mp4 --duration 620 --access coin --coin-price 20
+```
+This uploads the file to `episode-videos/<series>/ep<number>.mp4`, then upserts the matching row in
+`episodes` (safe to re-run for the same `--series`/`--number` — it'll overwrite both the file and
+the row). `--access` is one of `free` / `coin` / `subscriber` / `ad_unlock`; `--coin-price` is
+required only for `coin`. Pass `--id <episode-id>` to override the auto-generated
+`<series>-ep<number>` id.
+
+Supabase's free tier caps individual file uploads at 50MB — compress episodes accordingly, or
+upgrade the project plan if a clip needs to be larger.
+
+For adding a brand-new **series** (not just an episode), there's no script yet — write a plain
+`insert into public.series (...)` statement (see `20260802000005_seed_content.sql` for the column
+shapes) and run it via the SQL Editor, same as the original seed data.
+
+A proper admin/CMS UI is still a production follow-up, not built yet — this script just removes the
+manual SQL-writing step for the common case of "add one episode."
 
 ## Non-goals (for now)
 

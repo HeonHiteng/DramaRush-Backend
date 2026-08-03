@@ -1,0 +1,12 @@
+{
+  "name": "dramarush-backend-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "add-episode": "node scripts/add-episode.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^16.4.5"
+  }
+}
