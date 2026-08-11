@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "add-episode": "node scripts/add-episode.js"
+    "add-episode": "node scripts/add-episode.js",
+    "add-poster": "node scripts/add-poster.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
