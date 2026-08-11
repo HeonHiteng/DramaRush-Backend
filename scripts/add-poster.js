@@ -1,7 +1,11 @@
-import 'dotenv/config';
+import { config } from 'dotenv';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync, existsSync } from 'node:fs';
 import { extname } from 'node:path';
+
+config({ path: join(dirname(fileURLToPath(import.meta.url)), '.env') });
 
 function parseArgs(argv) {
   const args = {};
