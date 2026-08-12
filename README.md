@@ -113,8 +113,27 @@ For adding a brand-new **series** (not just an episode), there's no script yet �
 `insert into public.series (...)` statement (see `20260802000005_seed_content.sql` for the column
 shapes) and run it via the SQL Editor, same as the original seed data.
 
-A proper admin/CMS UI is still a production follow-up, not built yet — this script just removes the
-manual SQL-writing step for the common case of "add one episode."
+The app itself also has an in-app admin panel (`/admin` in the Expo app) for creating/editing
+series and episodes, including uploading video files, from the browser using the signed-in
+admin's own session — no service role key needed for day-to-day content work. This script remains
+useful for bulk/scripted uploads.
+
+**Granting admin access:** `is_admin` on `profiles` starts `false` for everyone and can only be
+flipped via the Supabase SQL Editor (or another service-role/superuser session) — a trigger added
+in `20260813000001_prevent_admin_self_escalation.sql` blocks any authenticated client request from
+setting its own `is_admin`, closing a self-escalation hole that existed in the original
+`admin_role` migration (RLS there only checked row ownership, not which column changed). To grant
+the first admin, run in the SQL Editor:
+
+```sql
+update public.profiles
+set is_admin = true
+where user_id = (select id from auth.users where email = 'you@example.com');
+```
+
+(For a guest/anonymous account with no email, look up the id in the `auth.users` table by
+`created_at` instead.) Once you're an admin, `/admin` becomes reachable from the app; you can
+promote further admins the same way, or extend the admin UI to do it in-app later.
 
 ## Non-goals (for now)
 
