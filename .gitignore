@@ -3,3 +3,5 @@
 node_modules
 supabase/.branches
 supabase/.temp
+scripts/.secrets/
+.keybox-upload-state.json
