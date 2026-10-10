@@ -105,6 +105,10 @@ finish and publishes ready episodes. `--replace` re-uploads episodes that alread
 
 **Single episodes** from the app's `/admin` screens (uses `admin-video-upload`).
 
+**Demo videos for development:** `npm run seed-demo-videos` attaches a 10-second sample clip
+(through the normal signed/webhook path) to every published episode that has no video. The live
+project's 54 seed episodes have them. Real uploads replace them automatically.
+
 **New series:** insert into `public.series` (admin UI or SQL; see the seed for column shapes).
 Posters: `npm run add-poster -- --series <id> --file poster.jpg`.
 

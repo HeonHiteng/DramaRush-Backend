@@ -12,17 +12,47 @@ videos are served from Cloudflare Stream through short-lived signed links.
 
 ---
 
+## 0. Suggested order of work
+
+Each step leaves the app working, so it can ship in small PRs.
+
+1. **Point `.env` at the new project** (§1). Everything except purchases,
+   Demo Controls and Reset works immediately — seed episodes still carry
+   their old `video_uri`, so the current player keeps playing.
+2. **Switch purchases / membership / Demo Controls / Reset to RPCs** (§5).
+   Read coin packages and plans from the database (§4).
+3. **Switch the player to `playback-token`** (§3) — one fetch when a page
+   becomes active, stop preloading neighbours, add the watermark overlay.
+   Every published episode already has a playable 10-second demo video.
+4. **Select explicit episode columns** (§4) — no more `video_uri`.
+5. **Admin screens** (§6–7): published toggle, upload through
+   `admin-video-upload`.
+6. **Rename to Keybox** (§8) whenever convenient.
+7. Update `src/testUtils/supabaseMock.ts`: its JS copies of the RPCs should
+   mirror §5 (server-side prices, `redeem_ad_reward` may return `false`,
+   direct table writes now fail).
+
+Tell the backend team when step 3 is live: we then delete `video_uri` and
+the old public `episode-videos` bucket.
+
 ## 1. Connect to the new project
 
 | | |
 |---|---|
 | Project | `keybox` (ref `ogqagauogrzezfmveewk`, Singapore) |
 | `EXPO_PUBLIC_SUPABASE_URL` | `https://ogqagauogrzezfmveewk.supabase.co` |
-| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | the **publishable** key from Supabase dashboard → Settings → API Keys (public by design; still don't commit `.env`) |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ncWFnYXVvZ3J6ZXpmbXZlZXdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NTQ3NDAsImV4cCI6MjEwNzEzMDc0MH0.xR9IePiD3ipknNKg3zurQgCfpk9_cNwo8jls_F_YPbY` |
 
-Same 8 demo series / 54 episodes are seeded. Anonymous (guest) sign-in is
-required by the app; it must be switched on in the dashboard (Authentication →
-Sign In / Providers → Anonymous) — backend team handles this.
+The anon key is public by design (it ships inside the app); what protects
+data is Row Level Security. Never put a service-role / secret key in the app.
+
+Already set up on the backend: anonymous (guest) sign-in on, the same 8
+demo series / 54 episodes, and a 10-second demo video on every episode
+(free episodes play right away; locked ones need an unlock).
+
+**Test accounts.** Guests: just use the app. Admin (for `/admin`): sign up
+with an email in the app, then ask the backend team to promote that email.
+Email confirmation is currently on, so confirm the email first.
 
 ---
 
@@ -70,7 +100,23 @@ const { data, error } = await supabase.functions.invoke('playback-token', {
 }
 ```
 
-**Errors** (`error.context.status` / body `{ "error": "<code>" }`):
+Reading the error code (supabase-js wraps non-2xx responses in `FunctionsHttpError`):
+
+```ts
+import { FunctionsHttpError } from '@supabase/supabase-js';
+
+async function getPlayback(episodeId: string) {
+  const { data, error } = await supabase.functions.invoke('playback-token', { body: { episode_id: episodeId } });
+  if (!error) return { ok: true as const, ...data };
+  if (error instanceof FunctionsHttpError) {
+    const { error: code } = await error.context.json(); // 'not_entitled' | 'unavailable' | ...
+    return { ok: false as const, code, status: error.context.status };
+  }
+  return { ok: false as const, code: 'network_error' };
+}
+```
+
+**Errors** (body `{ "error": "<code>" }`):
 
 | Status | `error` | Meaning → what the app shows |
 |---|---|---|
@@ -89,6 +135,11 @@ How to use it:
    per-user rate limit.
 2. Play `hls_url` with expo-video: `useVideoPlayer({ uri: hls_url, contentType: 'hls' })`.
    Use `thumbnail_url` for the poster frame if needed (same expiry).
+   **Web build:** iOS/Android play HLS natively, and so do Safari and Chrome
+   142+, but Firefox and older Chrome can't play `.m3u8` in a plain
+   `<video>`. On web, check `video.canPlayType('application/vnd.apple.mpegurl')`
+   and fall back to [hls.js](https://github.com/video-dev/hls.js) when it's
+   empty. Test the Vercel build in Chrome and Firefox.
 3. Tokens last **15 minutes** (`expires_at`). If playback errors (HTTP 401/403
    from Cloudflare) or the user resumes after `expires_at`, call
    `playback-token` again and continue from the current position. Re-requesting
