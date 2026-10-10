@@ -93,6 +93,37 @@ docs/frontend-api.md                   what the app must call / change
    where user_id = (select id from auth.users where email = 'you@example.com' and email_confirmed_at is not null);
    ```
 
+## Admin console (`admin/`)
+
+A desktop web app for the content team (Vite + React, Chinese UI):
+
+- **总览** — series/episodes/videos, storage minutes, today's delivered minutes vs budget, open abuse flags.
+- **剧集与上传** — create/edit series (poster upload), and per series: **bulk upload** (drop a folder of
+  `ep01.mp4…`, set the paywall rule — first N free, listed episodes ad-unlock, rest coins or members —
+  then 2 resumable tus uploads at a time with progress; auto-publish when Cloudflare finishes),
+  episode table (publish toggle, edit title/paywall, replace or upload a video, delete).
+- **成本与预算** — 30-day delivered minutes chart with estimated cost, storage cost, and every
+  `app_config` knob (budget, rate limits, starting coins, simulated payments).
+- **异常与日志** — open abuse flags with one-click unblock, **find the account behind a watermark
+  code** (or an email), its playback log, and manual playback blocks.
+
+Only accounts with `profiles.is_admin = true` can sign in (email + password); everyone else is signed
+out immediately, and the database enforces the same through RLS and the `admin_*` RPCs
+(`20261010120000_admin_console.sql`). The app holds only the public anon key.
+
+```bash
+cd admin
+npm install --workspaces=false   # the repo root is an npm workspace; keep admin standalone
+cp .env.example .env             # Supabase URL + anon key (public values)
+npm run dev                      # http://localhost:5174
+npm test                         # episode file matching, paywall rules, cost maths
+npm run build                    # static site in admin/dist (deploy anywhere, e.g. Vercel)
+```
+
+Make someone an admin: they create an account (Supabase dashboard → Authentication → Add user, or
+sign up in the app and confirm the email), then run the SQL under "First admin" above with their
+email.
+
 ## Adding content
 
 **A whole series** (folder of `ep01.mp4`, `ep02.mp4`, …; the series row must exist):

@@ -34,6 +34,14 @@ this repo only; the app (`../DramaRush`, Expo) belongs to the app team — chang
 - After DB changes: run both `supabase/tests/*.sql` smoke tests (must end in
   `ALL_TESTS_PASSED`) and `get_advisors` (security). After function changes: `npm test`.
 
+## Admin console
+
+`admin/` is a standalone Vite + React app (Chinese UI) for the content team: bulk tus uploads, series
+and episode management, costs/budget, abuse review. Install with `npm install --workspaces=false` inside
+`admin/` (the D:\aiseahub root is an npm workspace). Preview config `keybox-admin` (port 5174) lives in
+the root `.claude/launch.json`. Server side: `20261010120000_admin_console.sql` (`admin_*` RPCs, all
+DEFINER + is_admin check) and the existing `admin-video-*` functions. No secrets in this app.
+
 ## Map
 
 - Access model, setup, operations, app_config knobs: `README.md`.
