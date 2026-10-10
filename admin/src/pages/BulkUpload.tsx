@@ -2,7 +2,8 @@ import { useMemo, useRef, useState, type DragEvent } from 'react';
 import type { Episode, VideoAsset } from '../lib/api';
 import { accessFor, episodeId, matchEpisodeFiles, parseNumberList, type PaywallRule } from '../lib/episodes';
 import type { UploadJob } from '../lib/uploadJob';
-import { ACCESS_LABEL, AccessBadge, fmtBytes, VideoBadge } from '../ui';
+import { useI18n } from '../lib/i18n';
+import { ACCESS_KEYS, AccessBadge, fmtBytes, VideoBadge } from '../ui';
 import type { Uploads } from './useUploads';
 
 /** Collects files from a drop, including whole folders. */
@@ -38,6 +39,7 @@ export function BulkUpload({
   videos: Map<string, VideoAsset>;
   uploads: Uploads;
 }) {
+  const { t } = useI18n();
   const [files, setFiles] = useState<File[]>([]);
   const [over, setOver] = useState(false);
   const [freeCount, setFreeCount] = useState(3);
@@ -91,12 +93,12 @@ export function BulkUpload({
   return (
     <div className="panel">
       <div className="panel-head">
-        <h2>批量上传</h2>
-        <span className="hint">文件名带集号即可：ep01.mp4、EP 2.mov、003.mp4…</span>
+        <h2>{t('bulk.title')}</h2>
+        <span className="hint">{t('bulk.hint')}</span>
         {files.length > 0 && (
           <div className="right">
             <button className="btn ghost sm" onClick={() => setFiles([])}>
-              清空
+              {t('bulk.clear')}
             </button>
           </div>
         )}
@@ -118,9 +120,9 @@ export function BulkUpload({
           role="button"
           tabIndex={0}
         >
-          <h3>把整部剧的视频拖到这里</h3>
+          <h3>{t('bulk.drop')}</h3>
           <p>
-            可以拖文件夹 · 或{' '}
+            {t('bulk.dropFolders')}{' '}
             <button
               type="button"
               className="btn ghost sm"
@@ -129,9 +131,9 @@ export function BulkUpload({
                 folderInput.current?.click();
               }}
             >
-              选择文件夹
+              {t('bulk.chooseFolder')}
             </button>{' '}
-            · 支持大文件和断点续传
+            · {t('bulk.resumable')}
           </p>
           <input ref={fileInput} type="file" accept="video/*" multiple hidden onChange={(e) => addFiles([...(e.target.files ?? [])])} />
           <input
@@ -148,22 +150,22 @@ export function BulkUpload({
           <>
             <div className="grid-4">
               <label className="field">
-                <span>前几集免费</span>
+                <span>{t('bulk.freeCount')}</span>
                 <input className="input mono" type="number" min={0} value={freeCount} onChange={(e) => setFreeCount(Number(e.target.value))} />
               </label>
               <label className="field">
-                <span>看广告解锁的集（如 4, 6-7）</span>
-                <input className="input mono" value={adText} onChange={(e) => setAdText(e.target.value)} placeholder="留空 = 没有" />
+                <span>{t('bulk.adEpisodes')}</span>
+                <input className="input mono" value={adText} onChange={(e) => setAdText(e.target.value)} placeholder={t('bulk.adPlaceholder')} />
               </label>
               <label className="field">
-                <span>其余集</span>
+                <span>{t('bulk.rest')}</span>
                 <select className="select" value={rest} onChange={(e) => setRest(e.target.value as 'coin' | 'subscriber')}>
-                  <option value="coin">金币解锁</option>
-                  <option value="subscriber">会员专享</option>
+                  <option value="coin">{t('access.coin')}</option>
+                  <option value="subscriber">{t('access.subscriber')}</option>
                 </select>
               </label>
               <label className="field">
-                <span>金币价格</span>
+                <span>{t('bulk.coinPrice')}</span>
                 <input
                   className="input mono"
                   type="number"
@@ -179,15 +181,15 @@ export function BulkUpload({
             <div className="chips" style={{ gap: 18 }}>
               <label className="dim" style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
                 <input type="checkbox" checked={autoPublish} onChange={(e) => setAutoPublish(e.target.checked)} />
-                处理完自动发布
+                {t('bulk.autoPublish')}
               </label>
               <label className="dim" style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
                 <input type="checkbox" checked={applyToExisting} onChange={(e) => setApplyToExisting(e.target.checked)} />
-                已有的集也按上面的规则改付费方式
+                {t('bulk.applyExisting')}
               </label>
               <label className="dim" style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
                 <input type="checkbox" checked={reuploadReady} onChange={(e) => setReuploadReady(e.target.checked)} />
-                已有视频的集也重新上传（替换旧视频）
+                {t('bulk.reupload')}
               </label>
             </div>
 
@@ -195,12 +197,12 @@ export function BulkUpload({
               <table className="table">
                 <thead>
                   <tr>
-                    <th style={{ width: 60 }}>集</th>
-                    <th>文件</th>
-                    <th style={{ width: 100 }}>大小</th>
-                    <th style={{ width: 120 }}>剧集</th>
-                    <th style={{ width: 140 }}>付费方式</th>
-                    <th style={{ width: 130 }}>现有视频</th>
+                    <th style={{ width: 60 }}>{t('ep.colEp')}</th>
+                    <th>{t('bulk.colFile')}</th>
+                    <th style={{ width: 100 }}>{t('bulk.colSize')}</th>
+                    <th style={{ width: 120 }}>{t('bulk.colEpisode')}</th>
+                    <th style={{ width: 140 }}>{t('ep.fieldAccess')}</th>
+                    <th style={{ width: 130 }}>{t('bulk.colVideo')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -209,16 +211,16 @@ export function BulkUpload({
                       <td className="num">EP{String(r.number).padStart(2, '0')}</td>
                       <td className="mono" style={{ fontSize: 12, wordBreak: 'break-all' }}>
                         {r.file.name}
-                        {r.skip && <span className="muted"> · 已有视频，跳过</span>}
+                        {r.skip && <span className="muted">{t('bulk.skip')}</span>}
                       </td>
                       <td className="num">{fmtBytes(r.file.size)}</td>
-                      <td>{r.existing ? <span className="badge plain">已有</span> : <span className="badge blue plain">新建</span>}</td>
+                      <td>{r.existing ? <span className="badge plain">{t('bulk.existing')}</span> : <span className="badge blue plain">{t('bulk.new')}</span>}</td>
                       <td>
                         {r.willSetAccess && r.planned ? (
                           <AccessBadge access={r.planned.access} coinPrice={r.planned.coinPrice} />
                         ) : r.existing ? (
-                          <span className="muted" title="保持不变">
-                            {ACCESS_LABEL[r.existing.access]}（不变）
+                          <span className="muted" title={t('bulk.unchangedTitle')}>
+                            {t('bulk.unchanged', { access: t(ACCESS_KEYS[r.existing.access]) })}
                           </span>
                         ) : null}
                       </td>
@@ -233,21 +235,21 @@ export function BulkUpload({
               <p className="dim" style={{ margin: 0, fontSize: 13 }}>
                 {match.unmatched.length > 0 && (
                   <>
-                    忽略 {match.unmatched.length} 个认不出集号的文件：
-                    <span className="mono">{match.unmatched.slice(0, 5).map((f) => f.name).join('、')}</span>
+                    {t('bulk.unmatched', { n: match.unmatched.length })}
+                    <span className="mono">{match.unmatched.slice(0, 5).map((f) => f.name).join(t('bulk.listSep'))}</span>
                     {match.unmatched.length > 5 && ' …'}
                   </>
                 )}
-                {match.duplicates.length > 0 && <> · 集号重复（只取第一个）：{match.duplicates.join(', ')}</>}
+                {match.duplicates.length > 0 && t('bulk.duplicates', { list: match.duplicates.join(', ') })}
               </p>
             )}
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
               <button className="btn primary" disabled={!rule || toUpload.length === 0} onClick={start}>
-                开始上传 {toUpload.length} 集 · {fmtBytes(totalBytes)}
+                {t('bulk.start', { n: toUpload.length, size: fmtBytes(totalBytes) })}
               </button>
               <span className="muted" style={{ fontSize: 12 }}>
-                同时传 2 集；上传中请别关闭这个页面（关了也能重新拖入同样的文件继续传）。
+                {t('bulk.note')}
               </span>
             </div>
           </>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type Episode } from '../lib/api';
 import { runUpload, type UploadJob } from '../lib/uploadJob';
+import { t } from '../lib/i18n';
 
 const CONCURRENCY = 2;
 const POLL_MS = 5000;
@@ -106,7 +107,7 @@ export function useUploads(seriesId: string, onChanged: () => void) {
             patch(id, { state: 'ready' });
             changed = true;
           } else if (v?.status === 'error') {
-            patch(id, { state: 'failed', error: `Cloudflare 处理失败：${v.error_reason ?? '未知原因'}` });
+            patch(id, { state: 'failed', error: t('uploads.cfFailed', { reason: v.error_reason ?? t('uploads.unknownReason') }) });
             changed = true;
           }
         }

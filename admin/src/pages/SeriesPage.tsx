@@ -3,7 +3,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, type Episode, type VideoAsset } from '../lib/api';
 import type { EpisodeAccess } from '../lib/episodes';
 import type { UploadJob } from '../lib/uploadJob';
-import { ACCESS_LABEL, AccessBadge, Confirm, ErrorBox, fmtBytes, fmtDuration, Loading, Modal, useLoad, useToast, VideoBadge } from '../ui';
+import { useI18n } from '../lib/i18n';
+import { ACCESS_KEYS, AccessBadge, Confirm, ErrorBox, fmtBytes, fmtDuration, Loading, Modal, useLoad, useToast, VideoBadge } from '../ui';
 import { BulkUpload } from './BulkUpload';
 import { PosterArt } from './SeriesListPage';
 import { SeriesForm } from './SeriesForm';
@@ -13,6 +14,7 @@ export function SeriesPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
+  const { t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -25,7 +27,7 @@ export function SeriesPage() {
 
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
-  if (!data?.series) return <ErrorBox message="找不到这部剧" />;
+  if (!data?.series) return <ErrorBox message={t('sp.notFound')} />;
   const { series, episodes, videos } = data;
 
   const readyCount = episodes.filter((e) => videos.get(e.id)?.status === 'ready').length;
@@ -36,16 +38,16 @@ export function SeriesPage() {
       <div className="page-head">
         <div>
           <div className="kicker">
-            <Link to="/series">剧集</Link> / {series.id}
+            <Link to="/series">{t('sp.crumb')}</Link> / {series.id}
           </div>
           <h1>{series.title}</h1>
         </div>
         <div className="actions">
           <button className="btn" onClick={() => setEditing(true)}>
-            编辑剧集信息
+            {t('sp.edit')}
           </button>
           <button className="btn danger" onClick={() => setDeleting(true)} disabled={uploads.busy}>
-            删除整部剧
+            {t('sp.deleteAll')}
           </button>
         </div>
       </div>
@@ -65,10 +67,10 @@ export function SeriesPage() {
               ))}
             </div>
             <dl className="kv">
-              <dt>集数</dt>
-              <dt>已有视频</dt>
-              <dt>已发布</dt>
-              <dt>评分 · 热度</dt>
+              <dt>{t('sp.kvEpisodes')}</dt>
+              <dt>{t('sp.kvVideos')}</dt>
+              <dt>{t('sp.kvPublished')}</dt>
+              <dt>{t('sp.kvRating')}</dt>
               <dd>{episodes.length}</dd>
               <dd>{readyCount}</dd>
               <dd>{publishedCount}</dd>
@@ -90,25 +92,25 @@ export function SeriesPage() {
           onClose={() => setEditing(false)}
           onSaved={() => {
             setEditing(false);
-            toast.show('已保存');
+            toast.show(t('common.saved'));
             reload();
           }}
         />
       )}
       {deleting && (
         <Confirm
-          title="删除整部剧？"
+          title={t('sp.deleteTitle')}
           danger
-          confirmLabel={`删除《${series.title}》`}
+          confirmLabel={t('sp.deleteConfirm', { title: series.title })}
           body={
             <>
-              会删除这部剧的 {episodes.length} 集和它们在 Cloudflare 上的全部视频，用户的解锁记录也会一起消失。<b>无法恢复。</b>
+              {t('sp.deleteBody', { n: episodes.length })} <b>{t('sp.cannotUndo')}</b>
             </>
           }
           onClose={() => setDeleting(false)}
           onConfirm={async () => {
             await api.deleteSeries(series.id, episodes.map((e) => e.id));
-            toast.show('已删除');
+            toast.show(t('common.deleted'));
             navigate('/series');
           }}
         />
@@ -118,15 +120,16 @@ export function SeriesPage() {
 }
 
 function JobProgress({ job, uploads }: { job: UploadJob; uploads: Uploads }) {
+  const { t } = useI18n();
   const pct = job.file.size ? Math.round((job.sent / job.file.size) * 100) : 0;
   const label: Record<UploadJob['state'], string> = {
-    queued: '排队中',
-    saving: '保存剧集…',
-    uploading: `上传 ${pct}% · ${fmtBytes(job.sent)} / ${fmtBytes(job.file.size)}`,
-    processing: 'Cloudflare 处理中…',
-    ready: '完成',
-    failed: '失败',
-    cancelled: '已取消',
+    queued: t('job.queued'),
+    saving: t('job.saving'),
+    uploading: t('job.uploading', { pct, sent: fmtBytes(job.sent), size: fmtBytes(job.file.size) }),
+    processing: t('job.processing'),
+    ready: t('job.ready'),
+    failed: t('job.failed'),
+    cancelled: t('job.cancelled'),
   };
   const done = job.state === 'ready';
   const fail = job.state === 'failed' || job.state === 'cancelled';
@@ -137,12 +140,11 @@ function JobProgress({ job, uploads }: { job: UploadJob; uploads: Uploads }) {
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
         <span className={`mono ${fail ? 'error-text' : 'dim'}`} style={{ fontSize: 12 }}>
-          {label[job.state]}
-          {job.error && `：${job.error}`}
+          {job.error ? t('common.withError', { label: label[job.state], error: job.error }) : label[job.state]}
         </span>
         {(job.state === 'queued' || job.state === 'uploading') && (
           <button className="btn ghost sm" onClick={() => uploads.cancel(job.episodeId)}>
-            取消
+            {t('common.cancel')}
           </button>
         )}
         {(done || fail) && (
@@ -169,6 +171,7 @@ function EpisodeTable({
   onChanged: () => void;
 }) {
   const toast = useToast();
+  const { t } = useI18n();
   const [editing, setEditing] = useState<Episode | null>(null);
   const [deleting, setDeleting] = useState<Episode | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
@@ -181,7 +184,7 @@ function EpisodeTable({
 
   const togglePublish = async (ep: Episode) => {
     if (!ep.published && videos.get(ep.id)?.status !== 'ready') {
-      toast.show('这集还没有就绪的视频，发布后用户会看到「即将上线」。', 'err');
+      toast.show(t('ep.notReadyWarn'), 'err');
     }
     setToggling(ep.id);
     try {
@@ -197,11 +200,11 @@ function EpisodeTable({
   return (
     <div className="panel">
       <div className="panel-head">
-        <h2>单集</h2>
-        <span className="hint">未发布的集用户看不到；视频要「就绪」才能播放</span>
+        <h2>{t('ep.title')}</h2>
+        <span className="hint">{t('ep.hint')}</span>
         <div className="right">
           <button className="btn sm" onClick={onChanged}>
-            刷新
+            {t('common.refresh')}
           </button>
         </div>
       </div>
@@ -226,18 +229,18 @@ function EpisodeTable({
         }}
       />
       {episodes.length === 0 && orphanJobs.length === 0 ? (
-        <div className="empty">还没有单集。把视频拖到上面的「批量上传」即可自动建集。</div>
+        <div className="empty">{t('ep.empty')}</div>
       ) : (
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
-                <th style={{ width: 64 }}>集</th>
-                <th>标题</th>
-                <th style={{ width: 110 }}>付费</th>
-                <th style={{ width: 150 }}>视频</th>
-                <th style={{ width: 70 }}>发布</th>
-                <th style={{ width: 250 }}>上传</th>
+                <th style={{ width: 64 }}>{t('ep.colEp')}</th>
+                <th>{t('ep.colTitle')}</th>
+                <th style={{ width: 110 }}>{t('ep.colAccess')}</th>
+                <th style={{ width: 150 }}>{t('ep.colVideo')}</th>
+                <th style={{ width: 70 }}>{t('ep.colPublished')}</th>
+                <th style={{ width: 250 }}>{t('ep.colUpload')}</th>
                 <th style={{ width: 210 }} />
               </tr>
             </thead>
@@ -263,15 +266,15 @@ function EpisodeTable({
                     <td>
                       <button
                         className={`toggle ${ep.published ? 'on' : ''}`}
-                        aria-label={ep.published ? '已发布，点击取消发布' : '草稿，点击发布'}
+                        aria-label={ep.published ? t('ep.unpublishAria') : t('ep.publishAria')}
                         disabled={toggling === ep.id}
                         onClick={() => togglePublish(ep)}
                       />
                     </td>
                     <td>{job ? <JobProgress job={job} uploads={uploads} /> : <span className="muted">—</span>}</td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <button className="btn ghost sm" onClick={() => setEditing(ep)}>
-                        编辑
+                        {t('common.edit')}
                       </button>
                       <button
                         className="btn ghost sm"
@@ -281,10 +284,10 @@ function EpisodeTable({
                           replaceInput.current?.click();
                         }}
                       >
-                        {videos.get(ep.id) ? '替换视频' : '上传视频'}
+                        {videos.get(ep.id) ? t('ep.replace') : t('ep.uploadVideo')}
                       </button>
                       <button className="btn ghost sm" style={{ color: 'var(--red)' }} disabled={!!active} onClick={() => setDeleting(ep)}>
-                        删除
+                        {t('common.delete')}
                       </button>
                     </td>
                   </tr>
@@ -293,7 +296,7 @@ function EpisodeTable({
               {orphanJobs.map((job) => (
                 <tr key={job.episodeId}>
                   <td className="num">EP{String(job.number).padStart(2, '0')}</td>
-                  <td className="muted">新建中…</td>
+                  <td className="muted">{t('ep.creating')}</td>
                   <td />
                   <td />
                   <td />
@@ -314,21 +317,21 @@ function EpisodeTable({
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
-            toast.show('已保存');
+            toast.show(t('common.saved'));
             onChanged();
           }}
         />
       )}
       {deleting && (
         <Confirm
-          title={`删除第 ${deleting.number} 集？`}
+          title={t('ep.deleteTitle', { n: deleting.number })}
           danger
-          confirmLabel="删除"
-          body="会同时删掉它在 Cloudflare 上的视频（停止计费），用户对这集的解锁记录也会消失。无法恢复。"
+          confirmLabel={t('common.delete')}
+          body={t('ep.deleteBody')}
           onClose={() => setDeleting(null)}
           onConfirm={async () => {
             await api.deleteEpisode(deleting.id);
-            toast.show(`已删除 ${seriesId} 第 ${deleting.number} 集`);
+            toast.show(t('ep.deletedToast', { series: seriesId, n: deleting.number }));
             onChanged();
           }}
         />
@@ -338,6 +341,7 @@ function EpisodeTable({
 }
 
 function EpisodeEditor({ episode, onClose, onSaved }: { episode: Episode; onClose: () => void; onSaved: () => void }) {
+  const { t } = useI18n();
   const [title, setTitle] = useState(episode.title);
   const [access, setAccess] = useState<EpisodeAccess>(episode.access);
   const [price, setPrice] = useState(episode.coin_price ?? 20);
@@ -345,8 +349,8 @@ function EpisodeEditor({ episode, onClose, onSaved }: { episode: Episode; onClos
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
-    if (!title.trim()) return setError('请填写标题');
-    if (access === 'coin' && (!Number.isInteger(price) || price < 1)) return setError('金币价格要是正整数');
+    if (!title.trim()) return setError(t('ep.errTitle'));
+    if (access === 'coin' && (!Number.isInteger(price) || price < 1)) return setError(t('ep.errPrice'));
     setBusy(true);
     try {
       await api.updateEpisode(episode.id, { title: title.trim(), access, coin_price: access === 'coin' ? price : null });
@@ -360,37 +364,37 @@ function EpisodeEditor({ episode, onClose, onSaved }: { episode: Episode; onClos
   return (
     <Modal
       small
-      title={`编辑第 ${episode.number} 集`}
+      title={t('ep.editTitle', { n: episode.number })}
       onClose={busy ? () => {} : onClose}
       footer={
         <>
           <button className="btn ghost" onClick={onClose} disabled={busy}>
-            取消
+            {t('common.cancel')}
           </button>
           <button className="btn primary" onClick={save} disabled={busy}>
-            {busy ? '保存中…' : '保存'}
+            {busy ? t('common.saving') : t('common.save')}
           </button>
         </>
       }
     >
       <div className="stack" style={{ gap: 14 }}>
         <label className="field">
-          <span>标题</span>
+          <span>{t('ep.colTitle')}</span>
           <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
         </label>
         <div className="field">
-          <span>付费方式</span>
+          <span>{t('ep.fieldAccess')}</span>
           <div className="chips">
-            {(Object.keys(ACCESS_LABEL) as EpisodeAccess[]).map((a) => (
+            {(Object.keys(ACCESS_KEYS) as EpisodeAccess[]).map((a) => (
               <button type="button" key={a} className={`chip ${access === a ? 'on' : ''}`} onClick={() => setAccess(a)}>
-                {ACCESS_LABEL[a]}
+                {t(ACCESS_KEYS[a])}
               </button>
             ))}
           </div>
         </div>
         {access === 'coin' && (
           <label className="field">
-            <span>金币价格</span>
+            <span>{t('ep.fieldPrice')}</span>
             <input className="input mono" type="number" min={1} value={price} onChange={(e) => setPrice(Number(e.target.value))} />
           </label>
         )}

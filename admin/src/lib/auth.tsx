@@ -1,12 +1,13 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { t, type MsgKey } from './i18n';
 
 interface AuthState {
   status: 'loading' | 'signed_out' | 'admin';
   session: Session | null;
   /** Shown on the login screen (e.g. "this account is not an admin"). */
-  notice: string | null;
+  notice: MsgKey | null;
   /** Emails a one-time sign-in link. Never creates accounts. */
   sendLink: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -27,7 +28,7 @@ async function isAdmin(): Promise<boolean> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthState['status']>('loading');
   const [session, setSession] = useState<Session | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<MsgKey | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -46,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } else {
         await supabase.auth.signOut();
-        if (alive) setNotice('这个账号不是管理员。请用管理员账号登录，或联系我们开通权限。');
+        if (alive) setNotice('auth.notAdmin');
       }
     }
     supabase.auth.getSession().then(({ data }) => apply(data.session));
@@ -83,9 +84,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 function friendlyAuthError(message: string): string {
   const wait = /after (\d+) seconds?/i.exec(message);
-  if (wait) return `请求太频繁，请 ${wait[1]} 秒后再试`;
-  if (/rate limit/i.test(message)) return '发送次数太多，请稍后再试（每小时有上限）';
-  if (/invalid.*email|email.*invalid/i.test(message)) return '邮箱格式不正确';
+  if (wait) return t('auth.wait', { seconds: wait[1] });
+  if (/rate limit/i.test(message)) return t('auth.rateLimit');
+  if (/invalid.*email|email.*invalid/i.test(message)) return t('auth.badEmail');
   return message;
 }
 

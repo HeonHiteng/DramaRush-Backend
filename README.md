@@ -95,7 +95,9 @@ docs/frontend-api.md                   what the app must call / change
 
 ## Admin console (`admin/`)
 
-A desktop web app for the content team (Vite + React, Chinese UI):
+A desktop web app for the content team (Vite + React). English by default; the **EN | 中文** switch
+(sidebar, and top-right of the sign-in page) changes the language and is remembered per browser.
+All UI text lives in `admin/src/lib/i18n.tsx`; a test fails if Chinese is hard-coded anywhere else.
 
 - **总览** — series/episodes/videos, storage minutes, today's delivered minutes vs budget, open abuse flags.
 - **剧集与上传** — create/edit series (poster upload), and per series: **bulk upload** (drop a folder of

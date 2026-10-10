@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, type Series } from '../lib/api';
 import { SERIES_ID_RE, slugify } from '../lib/episodes';
+import { useI18n } from '../lib/i18n';
 import { Modal } from '../ui';
 
 /** Same lists the app filters by (DramaRush/src/types/content.ts). */
@@ -42,6 +43,7 @@ function textToCast(text: string): Series['cast_members'] {
 
 export function SeriesForm({ initial, onClose, onSaved }: { initial?: Series; onClose: () => void; onSaved: (id: string) => void }) {
   const isNew = !initial;
+  const { t } = useI18n();
   const [s, setS] = useState<Series>(initial ?? BLANK);
   const [idTouched, setIdTouched] = useState(false);
   const [castText, setCastText] = useState(castToText(s.cast_members));
@@ -53,10 +55,10 @@ export function SeriesForm({ initial, onClose, onSaved }: { initial?: Series; on
 
   const save = async () => {
     setError(null);
-    if (!s.title.trim()) return setError('请填写剧名');
-    if (!SERIES_ID_RE.test(s.id)) return setError('剧集 ID 只能用小写字母、数字和横线（2–60 个字符）');
-    if (!s.synopsis.trim()) return setError('请填写简介');
-    if (s.genres.length === 0) return setError('至少选一个类型');
+    if (!s.title.trim()) return setError(t('form.errTitle'));
+    if (!SERIES_ID_RE.test(s.id)) return setError(t('form.errId'));
+    if (!s.synopsis.trim()) return setError(t('form.errSynopsis'));
+    if (s.genres.length === 0) return setError(t('form.errGenre'));
     setBusy(true);
     try {
       const { poster_image_uri: _keep, ...row } = { ...s, title: s.title.trim(), synopsis: s.synopsis.trim(), cast_members: textToCast(castText) };
@@ -66,22 +68,22 @@ export function SeriesForm({ initial, onClose, onSaved }: { initial?: Series; on
       onSaved(s.id);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setError(msg.includes('duplicate key') ? '这个剧集 ID 已被占用，换一个' : msg);
+      setError(msg.includes('duplicate key') ? t('form.errDuplicate') : msg);
       setBusy(false);
     }
   };
 
   return (
     <Modal
-      title={isNew ? '新建剧集' : `编辑《${initial.title}》`}
+      title={isNew ? t('form.newTitle') : t('form.editTitle', { title: initial.title })}
       onClose={busy ? () => {} : onClose}
       footer={
         <>
           <button className="btn ghost" onClick={onClose} disabled={busy}>
-            取消
+            {t('common.cancel')}
           </button>
           <button className="btn primary" onClick={save} disabled={busy}>
-            {busy ? '保存中…' : '保存'}
+            {busy ? t('common.saving') : t('common.save')}
           </button>
         </>
       }
@@ -89,7 +91,7 @@ export function SeriesForm({ initial, onClose, onSaved }: { initial?: Series; on
       <div className="stack" style={{ gap: 14 }}>
         <div className="grid-2">
           <label className="field">
-            <span>剧名</span>
+            <span>{t('form.title')}</span>
             <input
               className="input"
               value={s.title}
@@ -100,7 +102,7 @@ export function SeriesForm({ initial, onClose, onSaved }: { initial?: Series; on
             />
           </label>
           <label className="field">
-            <span>剧集 ID（网址里用，创建后不能改）</span>
+            <span>{t('form.id')}</span>
             <input
               className="input mono"
               value={s.id}
@@ -114,12 +116,12 @@ export function SeriesForm({ initial, onClose, onSaved }: { initial?: Series; on
         </div>
 
         <label className="field">
-          <span>简介</span>
+          <span>{t('form.synopsis')}</span>
           <textarea className="textarea" value={s.synopsis} onChange={(e) => set('synopsis', e.target.value)} />
         </label>
 
         <div className="field">
-          <span>类型</span>
+          <span>{t('form.genres')}</span>
           <div className="chips">
             {GENRES.map((g) => (
               <button
@@ -136,7 +138,7 @@ export function SeriesForm({ initial, onClose, onSaved }: { initial?: Series; on
 
         <div className="grid-4">
           <label className="field">
-            <span>语言</span>
+            <span>{t('form.language')}</span>
             <select className="select" value={s.language} onChange={(e) => set('language', e.target.value)}>
               {LANGUAGES.map((l) => (
                 <option key={l}>{l}</option>
@@ -144,14 +146,14 @@ export function SeriesForm({ initial, onClose, onSaved }: { initial?: Series; on
             </select>
           </label>
           <label className="field">
-            <span>状态</span>
+            <span>{t('form.status')}</span>
             <select className="select" value={s.status} onChange={(e) => set('status', e.target.value as Series['status'])}>
-              <option value="ongoing">连载中</option>
-              <option value="completed">已完结</option>
+              <option value="ongoing">{t('form.ongoing')}</option>
+              <option value="completed">{t('form.completed')}</option>
             </select>
           </label>
           <label className="field">
-            <span>评分（0–5）</span>
+            <span>{t('form.rating')}</span>
             <input
               className="input mono"
               type="number"
@@ -163,7 +165,7 @@ export function SeriesForm({ initial, onClose, onSaved }: { initial?: Series; on
             />
           </label>
           <label className="field">
-            <span>热度（排序用）</span>
+            <span>{t('form.popularity')}</span>
             <input className="input mono" type="number" value={s.popularity} onChange={(e) => set('popularity', Math.round(Number(e.target.value)))} />
           </label>
         </div>
@@ -171,14 +173,14 @@ export function SeriesForm({ initial, onClose, onSaved }: { initial?: Series; on
         <div className="grid-4">
           {(
             [
-              ['poster_color_from', '海报渐变 起'],
-              ['poster_color_to', '海报渐变 止'],
-              ['banner_color_from', '横幅渐变 起'],
-              ['banner_color_to', '横幅渐变 止'],
+              ['poster_color_from', 'form.posterFrom'],
+              ['poster_color_to', 'form.posterTo'],
+              ['banner_color_from', 'form.bannerFrom'],
+              ['banner_color_to', 'form.bannerTo'],
             ] as const
           ).map(([key, label]) => (
             <label key={key} className="field">
-              <span>{label}</span>
+              <span>{t(label)}</span>
               <input className="input" type="color" value={s[key]} onChange={(e) => set(key, e.target.value.toUpperCase())} style={{ height: 36, padding: 3 }} />
             </label>
           ))}
@@ -186,17 +188,17 @@ export function SeriesForm({ initial, onClose, onSaved }: { initial?: Series; on
 
         <div className="grid-2">
           <label className="field">
-            <span>演员（每行一个：姓名 | 角色）</span>
+            <span>{t('form.cast')}</span>
             <textarea className="textarea mono" value={castText} onChange={(e) => setCastText(e.target.value)} placeholder="Elena Marsh | Wren Hale" />
           </label>
           <div className="stack" style={{ gap: 14 }}>
             <label className="field">
-              <span>海报图片（可选，JPG/PNG/WebP，竖版 3:4）</span>
+              <span>{t('form.poster')}</span>
               <input className="input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setPoster(e.target.files?.[0] ?? null)} />
             </label>
             <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <input type="checkbox" checked={s.is_new} onChange={(e) => set('is_new', e.target.checked)} />
-              <span style={{ color: 'var(--text-2)', fontSize: 13 }}>标记为「新剧」</span>
+              <span style={{ color: 'var(--text-2)', fontSize: 13 }}>{t('form.isNew')}</span>
             </label>
           </div>
         </div>

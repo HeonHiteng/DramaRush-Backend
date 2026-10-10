@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
+import { I18nProvider, LangSwitch, useI18n } from './lib/i18n';
 import { configError } from './lib/supabase';
 import { ToastProvider, useLoad } from './ui';
 import { api } from './lib/api';
@@ -13,6 +14,7 @@ import { AbusePage } from './pages/AbusePage';
 export function App() {
   if (configError) return <div className="empty error-text">{configError}</div>;
   return (
+    <I18nProvider>
     <AuthProvider>
       <ToastProvider>
         <BrowserRouter>
@@ -32,18 +34,21 @@ export function App() {
         </BrowserRouter>
       </ToastProvider>
     </AuthProvider>
+    </I18nProvider>
   );
 }
 
 function RequireAdmin() {
   const { status } = useAuth();
-  if (status === 'loading') return <div className="empty">验证登录…</div>;
+  const { t } = useI18n();
+  if (status === 'loading') return <div className="empty">{t('app.checking')}</div>;
   if (status !== 'admin') return <Navigate to="/login" replace />;
   return <Outlet />;
 }
 
 function Shell() {
   const { session, signOut } = useAuth();
+  const { t } = useI18n();
   const flags = useLoad(() => api.dashboard().then((d) => d.open_abuse_flags), []);
   return (
     <div className="shell">
@@ -56,19 +61,20 @@ function Shell() {
         </div>
         <nav className="nav">
           <NavLink to="/" end>
-            总览
+            {t('nav.overview')}
           </NavLink>
-          <NavLink to="/series">剧集与上传</NavLink>
-          <NavLink to="/costs">成本与预算</NavLink>
+          <NavLink to="/series">{t('nav.series')}</NavLink>
+          <NavLink to="/costs">{t('nav.costs')}</NavLink>
           <NavLink to="/abuse">
-            异常与日志
+            {t('nav.abuse')}
             {!!flags.data && <span className="count">{flags.data}</span>}
           </NavLink>
         </nav>
         <div className="sidebar-foot">
+          <LangSwitch />
           <div className="who">{session?.user.email}</div>
           <button className="btn sm" onClick={signOut}>
-            退出登录
+            {t('nav.signOut')}
           </button>
         </div>
       </aside>

@@ -119,7 +119,30 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding: 0 7px;
 }
 .sidebar-foot { margin-top: auto; padding-right: 18px; font-size: 12px; color: var(--text-3); }
-.sidebar-foot .who { color: var(--text-2); word-break: break-all; margin-bottom: 8px; }
+.sidebar-foot .who { color: var(--text-2); word-break: break-all; margin: 12px 0 8px; }
+
+.lang-switch {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.lang-switch button {
+  background: transparent;
+  border: 0;
+  color: var(--text-3);
+  padding: 4px 10px;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: 0.06em;
+}
+.lang-switch button + button { border-left: 1px solid var(--line-strong); }
+.lang-switch button:hover { color: var(--text); }
+.lang-switch button.on { background: var(--panel-2); color: var(--text); }
+.lang-switch button:focus-visible { outline: 2px solid var(--coral); outline-offset: -2px; }
+.lang-switch.corner { position: absolute; top: 20px; right: 24px; }
 
 .main { min-width: 0; padding: 30px 40px 80px; }
 .page-head { display: flex; align-items: flex-end; gap: 16px; margin-bottom: 26px; }
@@ -435,7 +458,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-block: 1px solid var(--line);
 }
 .login-art p { color: var(--text-2); max-width: 420px; margin: 18px 0 0; }
-.login-form { display: grid; place-items: center; padding: 40px; }
+.login-form { display: grid; place-items: center; padding: 40px; position: relative; }
 .login-form form { width: min(360px, 100%); display: flex; flex-direction: column; gap: 14px; }
 .login-form h1 { margin: 0 0 6px; font-stretch: 110%; font-size: 26px; }
 

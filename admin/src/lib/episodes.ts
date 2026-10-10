@@ -4,6 +4,8 @@
  * console and the CLI name episodes the same way.
  */
 
+import { t } from './i18n';
+
 export type EpisodeAccess = 'free' | 'coin' | 'subscriber' | 'ad_unlock';
 
 /** ep01.mp4, EP 2.mov, episode-3.mkv, 004.mp4 … */
@@ -67,7 +69,7 @@ export function parseNumberList(input: string): number[] {
     } else if (/^\d+$/.test(part)) {
       out.add(Number(part));
     } else {
-      throw new Error(`无法识别 "${part}"，请用逗号分隔的集号或范围，如 4, 6-8`);
+      throw new Error(t('bulk.badList', { part }));
     }
   }
   return [...out].sort((a, b) => a - b);

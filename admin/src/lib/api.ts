@@ -1,5 +1,6 @@
 import { supabase, errorMessage } from './supabase';
 import type { EpisodeAccess } from './episodes';
+import { t } from './i18n';
 
 /** Awaits a supabase-js call and throws its error; the caller states the row type. */
 async function must<T = unknown>(promise: PromiseLike<{ data: unknown; error: unknown }>): Promise<T> {
@@ -228,7 +229,7 @@ export const api = {
   deleteEpisode: async (id: string) => {
     const { data, error } = await supabase.functions.invoke('admin-video-delete', { body: { episode_id: id } });
     if (error) throw new Error(await errorMessage(error));
-    if (data?.failed?.length) throw new Error('Cloudflare 上的视频没删掉，请重试');
+    if (data?.failed?.length) throw new Error(t('api.cfDeleteFailed'));
     await must(supabase.from('episodes').delete().eq('id', id));
   },
 

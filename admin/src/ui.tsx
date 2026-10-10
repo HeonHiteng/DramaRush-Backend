@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { EpisodeAccess } from './lib/episodes';
 import type { VideoAsset } from './lib/api';
+import { currentLocale, t, useI18n, type MsgKey } from './lib/i18n';
 
 // ---------------------------------------------------------------- format
 
@@ -16,7 +17,7 @@ export function fmtDateTime(iso: string | null | undefined): string {
   const d = new Date(iso);
   // Show the year only when it isn't this year (e.g. a membership ending next year).
   const year = d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' as const } : {};
-  return d.toLocaleString('zh-CN', { ...year, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString(currentLocale(), { ...year, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 export function fmtBytes(n: number): string {
@@ -29,26 +30,37 @@ export function fmtNumber(n: number | null | undefined): string {
   return (n ?? 0).toLocaleString('en-US');
 }
 
-export const ACCESS_LABEL: Record<EpisodeAccess, string> = {
-  free: '免费',
-  coin: '金币解锁',
-  ad_unlock: '看广告解锁',
-  subscriber: '会员专享',
+export const ACCESS_KEYS: Record<EpisodeAccess, MsgKey> = {
+  free: 'access.free',
+  coin: 'access.coin',
+  ad_unlock: 'access.ad_unlock',
+  subscriber: 'access.subscriber',
 };
 
+export function accessLabel(access: EpisodeAccess): string {
+  return t(ACCESS_KEYS[access]);
+}
+
 export function AccessBadge({ access, coinPrice }: { access: EpisodeAccess; coinPrice: number | null }) {
+  const { t } = useI18n();
   if (access === 'coin') return <span className="badge gold plain mono">🪙 {coinPrice}</span>;
-  if (access === 'free') return <span className="badge green plain">免费</span>;
-  if (access === 'subscriber') return <span className="badge blue plain">会员</span>;
-  return <span className="badge amber plain">广告</span>;
+  if (access === 'free') return <span className="badge green plain">{t('badge.free')}</span>;
+  if (access === 'subscriber') return <span className="badge blue plain">{t('badge.member')}</span>;
+  return <span className="badge amber plain">{t('badge.ad')}</span>;
 }
 
 export function VideoBadge({ video }: { video: VideoAsset | undefined }) {
-  if (!video) return <span className="badge">无视频</span>;
-  if (video.status === 'ready') return <span className="badge green">就绪 · {fmtDuration(video.duration_sec)}</span>;
-  if (video.status === 'error') return <span className="badge red" title={video.error_reason ?? ''}>失败</span>;
-  if (video.status === 'pending_upload') return <span className="badge amber pulse">等待上传</span>;
-  return <span className="badge amber pulse">处理中</span>;
+  const { t } = useI18n();
+  if (!video) return <span className="badge">{t('video.none')}</span>;
+  if (video.status === 'ready') return <span className="badge green">{t('video.ready', { duration: fmtDuration(video.duration_sec) })}</span>;
+  if (video.status === 'error')
+    return (
+      <span className="badge red" title={video.error_reason ?? ''}>
+        {t('video.failed')}
+      </span>
+    );
+  if (video.status === 'pending_upload') return <span className="badge amber pulse">{t('video.pending')}</span>;
+  return <span className="badge amber pulse">{t('video.processing')}</span>;
 }
 
 // ---------------------------------------------------------------- toast
@@ -95,6 +107,7 @@ export function Modal({
   footer?: ReactNode;
   small?: boolean;
 }) {
+  const { t } = useI18n();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
@@ -106,7 +119,7 @@ export function Modal({
         <div className="panel-head">
           <h2>{title}</h2>
           <div className="right">
-            <button className="btn ghost sm" onClick={onClose} aria-label="关闭">
+            <button className="btn ghost sm" onClick={onClose} aria-label={t('common.close')}>
               ✕
             </button>
           </div>
@@ -133,6 +146,7 @@ export function Confirm({
   onConfirm: () => Promise<void>;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
@@ -143,7 +157,7 @@ export function Confirm({
       footer={
         <>
           <button className="btn ghost" onClick={onClose} disabled={busy}>
-            取消
+            {t('common.cancel')}
           </button>
           <button
             className={`btn ${danger ? 'danger' : 'primary'}`}
@@ -160,7 +174,7 @@ export function Confirm({
               }
             }}
           >
-            {busy ? '处理中…' : confirmLabel}
+            {busy ? t('common.working') : confirmLabel}
           </button>
         </>
       }
@@ -196,16 +210,18 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[]) {
 }
 
 export function Loading() {
-  return <div className="empty">加载中…</div>;
+  const { t } = useI18n();
+  return <div className="empty">{t('common.loading')}</div>;
 }
 
 export function ErrorBox({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  const { t } = useI18n();
   return (
     <div className="empty">
       <p className="error-text">{message}</p>
       {onRetry && (
         <button className="btn sm" onClick={onRetry}>
-          重试
+          {t('common.retry')}
         </button>
       )}
     </div>
