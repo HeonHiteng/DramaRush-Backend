@@ -107,8 +107,9 @@ A desktop web app for the content team (Vite + React, Chinese UI):
 - **异常与日志** — open abuse flags with one-click unblock, **find the account behind a watermark
   code** (or an email), its playback log, and manual playback blocks.
 
-Only accounts with `profiles.is_admin = true` can sign in (email + password); everyone else is signed
-out immediately, and the database enforces the same through RLS and the `admin_*` RPCs
+Sign-in is passwordless: enter the email, open the one-time link (Supabase magic link, PKCE — open it in
+the same browser). The form never creates accounts and does not reveal which emails exist. Only accounts
+with `profiles.is_admin = true` get in; everyone else is signed out immediately, and the database enforces the same through RLS and the `admin_*` RPCs
 (`20261010120000_admin_console.sql`). The app holds only the public anon key.
 
 ```bash
@@ -120,9 +121,11 @@ npm test                         # episode file matching, paywall rules, cost ma
 npm run build                    # static site in admin/dist (deploy anywhere, e.g. Vercel)
 ```
 
-Make someone an admin: they create an account (Supabase dashboard → Authentication → Add user, or
-sign up in the app and confirm the email), then run the SQL under "First admin" above with their
-email.
+Make someone an admin: create the account (Supabase dashboard → Authentication → Add user, no password
+needed, tick *Auto Confirm User*), then run the SQL under "First admin" above with their email. The
+site's URL (e.g. `http://localhost:5174`, later the deployed domain) must be in Authentication → URL
+Configuration → Redirect URLs. Supabase's built-in mailer only sends a few emails per hour; set up
+custom SMTP before more people use it.
 
 ## Adding content
 

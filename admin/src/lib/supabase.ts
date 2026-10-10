@@ -11,7 +11,9 @@ export const configError =
  * what authorizes writes; there is no service key in this app.
  */
 export const supabase = createClient(url ?? 'http://localhost', anonKey ?? 'missing', {
-  auth: { persistSession: true, autoRefreshToken: true, storageKey: 'keybox-admin-auth' },
+  // PKCE: the emailed sign-in link only works in the browser that asked for it,
+  // and no tokens ever appear in the URL.
+  auth: { persistSession: true, autoRefreshToken: true, storageKey: 'keybox-admin-auth', flowType: 'pkce' },
 });
 
 /** Turns a Supabase / Edge Function error into a readable message. */

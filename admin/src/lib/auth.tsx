@@ -7,7 +7,8 @@ interface AuthState {
   session: Session | null;
   /** Shown on the login screen (e.g. "this account is not an admin"). */
   notice: string | null;
-  signIn: (email: string, password: string) => Promise<void>;
+  /** Emails a one-time sign-in link. Never creates accounts. */
+  sendLink: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -63,16 +64,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     status,
     session,
     notice,
-    signIn: async (email, password) => {
+    sendLink: async (email) => {
       setNotice(null);
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw new Error(error.message === 'Invalid login credentials' ? '邮箱或密码不正确' : error.message);
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: false, emailRedirectTo: window.location.origin },
+      });
+      // "Signups not allowed" means the address has no account. Treat it like
+      // success so the form doesn't reveal which emails exist.
+      if (error && !/signups? not allowed/i.test(error.message)) throw new Error(friendlyAuthError(error.message));
     },
     signOut: async () => {
       await supabase.auth.signOut();
     },
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+function friendlyAuthError(message: string): string {
+  const wait = /after (\d+) seconds?/i.exec(message);
+  if (wait) return `请求太频繁，请 ${wait[1]} 秒后再试`;
+  if (/rate limit/i.test(message)) return '发送次数太多，请稍后再试（每小时有上限）';
+  if (/invalid.*email|email.*invalid/i.test(message)) return '邮箱格式不正确';
+  return message;
 }
 
 export function useAuth(): AuthState {
