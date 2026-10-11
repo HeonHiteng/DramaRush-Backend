@@ -1,10 +1,17 @@
 {
-  "name": "dramarush-backend-tools",
+  "name": "keybox-backend-tools",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
-    "add-episode": "node scripts/add-episode.js",
-    "add-poster": "node scripts/add-poster.js"
+    "cloudflare-setup": "node scripts/cloudflare-setup.js",
+    "upload-series": "node scripts/upload-series.js",
+    "seed-demo-videos": "node scripts/seed-demo-videos.js",
+    "add-poster": "node scripts/add-poster.js",
+    "test": "node --test \"tests/functions/*.test.ts\" \"tests/scripts/*.test.js\"",
+    "test:e2e": "node --env-file=scripts/.env --env-file=scripts/.secrets/function-secrets.env tests/e2e/live-e2e.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

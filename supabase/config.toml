@@ -1,8 +1,11 @@
 # Supabase CLI project config. If your installed CLI version complains about
 # missing/renamed fields, run `supabase init` in this folder and let it merge
-# — the important part of this repo is the SQL under supabase/migrations/.
+# — the important parts of this repo are supabase/migrations/ and
+# supabase/functions/.
+#
+# Live project: keybox (ref ogqagauogrzezfmveewk, ap-southeast-1).
 
-project_id = "dramarush"
+project_id = "keybox"
 
 [api]
 enabled = true
@@ -13,7 +16,7 @@ max_rows = 1000
 
 [db]
 port = 54322
-major_version = 15
+major_version = 17
 
 [studio]
 enabled = true
@@ -22,9 +25,11 @@ port = 54323
 [auth]
 enabled = true
 site_url = "http://localhost:8081"
-additional_redirect_urls = ["dramarush://", "http://localhost:8081"]
+# "dramarush://" stays until the app's brand.scheme is switched to "keybox".
+additional_redirect_urls = ["keybox://", "dramarush://", "http://localhost:8081"]
 jwt_expiry = 3600
 enable_signup = true
+enable_anonymous_sign_ins = true
 
 [auth.email]
 enable_signup = true
@@ -39,3 +44,21 @@ secret = ""
 enabled = false
 client_id = ""
 secret = ""
+
+# Edge Functions. playback-token / admin-video-* require a signed-in caller.
+# stream-webhook is authenticated by Cloudflare's HMAC signature and
+# stream-usage-sync by the Vault cron secret, so they skip JWT verification.
+[functions.playback-token]
+verify_jwt = true
+
+[functions.admin-video-upload]
+verify_jwt = true
+
+[functions.admin-video-delete]
+verify_jwt = true
+
+[functions.stream-webhook]
+verify_jwt = false
+
+[functions.stream-usage-sync]
+verify_jwt = false

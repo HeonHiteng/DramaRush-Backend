@@ -1,147 +1,188 @@
-# DramaRush Backend (Supabase)
+# Keybox Backend (Supabase + Cloudflare Stream)
 
-Postgres schema, Row Level Security, and seed data for the [DramaRush](https://github.com/HeonHiteng/DramaRush)
-app. This is not a server you run yourself — it's the SQL that configures a [Supabase](https://supabase.com)
-project, which provides the database, auth, and API.
+Backend for the [Keybox](https://github.com/HeonHiteng/DramaRush) vertical short-drama app
+(the app repo is still named `DramaRush`, the old placeholder name). There is no server to run:
+
+- **Supabase** — Postgres schema, Row Level Security, auth, and Edge Functions (`supabase/`).
+- **Cloudflare Stream** — stores and streams every episode video. Videos require signed URLs; the
+  only way to get one is the `playback-token` Edge Function, after the database has checked that
+  the caller may watch.
+
+The app team's integration guide is **[docs/frontend-api.md](docs/frontend-api.md)**.
+
+Live project: `keybox` — ref `ogqagauogrzezfmveewk`, region ap-southeast-1 (Singapore).
+
+## How access control works
+
+```
+app ──playback-token(episode_id)──▶ Edge Function ──authorize_playback()──▶ Postgres
+                                         │   blocked? entitled? video ready? budget? rate limit?
+                                         ▼
+                         signs a 15-min Stream token locally (RS256 signing key)
+                                         ▼
+app ◀── hls_url (customer-xxx.cloudflarestream.com/<token>/manifest/video.m3u8) + watermark code
+```
+
+- Clients can only **read** wallets, transactions, unlocks, subscriptions. Every change goes
+  through `SECURITY DEFINER` functions (`unlock_episode_with_coins`, `redeem_ad_reward`,
+  `claim_daily_mission`, `simulate_*`, …) — see `20261009150000_lock_down_entitlements.sql`.
+- Stream video IDs live in `video_assets`, which normal users cannot read at all.
+- `authorize_playback` logs every decision (`playback_events`), rate-limits per user and
+  temporarily blocks scrapers (`abuse_flags`), and enforces a daily delivered-minutes budget.
+- Every video gets the Keybox logo burned in (Cloudflare watermark profile); the app overlays the
+  viewer's `public_code`, so a leaked screen recording points to an account.
+- No DRM: a paying user with tools can still save an episode they are entitled to while its token
+  is valid. The layers above make bulk scraping hard and leaks traceable.
 
 ## What's here
 
 ```
 supabase/
-  config.toml                          Supabase CLI project config
+  config.toml
   migrations/
-    20260802000001_content_tables.sql  series, episodes (public read-only)
-    20260802000002_user_tables.sql     profiles, wallets, transactions, subscriptions,
-                                        favorites, unlocks, watch_history, progress,
-                                        recent_searches (owner-only)
-    20260802000003_rls_policies.sql    Row Level Security for every table above
-    20260802000004_functions.sql       handle_new_user() signup trigger,
-                                        unlock_episode_with_coins(), redeem_ad_reward()
-    20260802000005_seed_content.sql    the 8 mock series / 54 episodes from the app repo
-    20260803000001_video_storage.sql   public 'episode-videos' storage bucket for real video files
+    20260802000001…20260813000001     original schema (content, users, RLS, RPCs, seed,
+                                        admin role, posters, daily mission, admin-escalation fix)
+    20261009150000_lock_down_entitlements.sql   server-only writes for coins/unlocks/membership,
+                                        app_config, coin_packages, subscription_plans,
+                                        simulated purchase RPCs, profiles.public_code
+    20261009160000_video_assets.sql    video_assets (Stream IDs), episodes.published, can_watch
+    20261009170000_playback_guard.sql  authorize_playback, playback_events, abuse_flags,
+                                        stream_usage_daily, cost guard
+    20261009180000_scheduled_jobs.sql  pg_cron: hourly usage sync, daily log pruning
+  functions/
+    _shared/                           http helpers, Stream API client, token signing, webhook HMAC
+    playback-token/                    the only source of playable URLs
+    admin-video-upload/                one-time Cloudflare upload URL for an episode (admins)
+    admin-video-delete/                remove videos from Cloudflare + DB (admins)
+    stream-webhook/                    Cloudflare "video ready/error" callback (HMAC-verified)
+    stream-usage-sync/                 hourly: minutes delivered → stream_usage_daily
+  tests/                               SQL smoke tests (run as postgres; they roll back)
 scripts/
-  add-episode.js                       uploads a video file + upserts its episodes row (see below)
-  .env.example                         template for scripts/.env (service role key, gitignored)
+  cloudflare-setup.js                  one-time: signing key, watermark, webhook, secrets file
+  upload-series.js                     bulk upload a folder of episodes (resumable)
+  add-poster.js                        upload a series poster (public bucket)
+tests/                                 unit tests (node --test)
+docs/frontend-api.md                   what the app must call / change
 ```
 
-## One-time setup
+## Setup (new project)
 
-1. **Create a free Supabase project** at [supabase.com/dashboard](https://supabase.com/dashboard/projects)
-   (New Project → pick a name/region/password). Wait for it to finish provisioning.
-
-2. **Install the Supabase CLI** if you don't have it:
+1. **Database.** Apply every file in `supabase/migrations/` in order
+   (`supabase link --project-ref <ref>` then `supabase db push`, or the Supabase MCP / SQL Editor).
+   The live project's `supabase_migrations.schema_migrations` versions match these filenames.
+2. **Auth.** Authentication → Sign In / Providers → enable **Anonymous Sign-Ins** (guest mode).
+3. **Cloudflare.** Enable Stream on the Cloudflare account (a separate account for Keybox is
+   recommended: Stream allows only one webhook per account). Create API tokens:
+   - *Stream: Edit* → `CLOUDFLARE_STREAM_API_TOKEN`
+   - *Account Analytics: Read* → `CLOUDFLARE_ANALYTICS_API_TOKEN` (cost guard)
+4. **Scripts env.** `cp scripts/.env.example scripts/.env` and fill it in (service role key —
+   never commit). `npm install` (Node ≥ 22.18).
+5. **Cloudflare objects + secrets.**
    ```bash
-   npm install -g supabase
+   npm run cloudflare-setup -- --customer-code customer-xxxx --watermark ./keybox-logo.png
+   npx supabase secrets set --env-file scripts/.secrets/function-secrets.env --project-ref <ref>
+   ```
+   Optional: `--countries MY,SG` (token geo-restriction), `--origins keybox.app,*.keybox.app`.
+6. **Functions.** Deploy everything in `supabase/functions/` (`supabase functions deploy`, or the
+   MCP). `config.toml` sets which ones skip JWT verification.
+7. **Cron.** Set `app_config.functions_base_url` to `https://<ref>.supabase.co/functions/v1`
+   (done for the live project). The cron secret is generated in Vault by the migration.
+8. **First admin** (SQL Editor):
+   ```sql
+   update public.profiles set is_admin = true
+   where user_id = (select id from auth.users where email = 'you@example.com' and email_confirmed_at is not null);
    ```
 
-3. **Link this repo to your project** (from this folder):
-   ```bash
-   supabase login
-   supabase link --project-ref <your-project-ref>
-   ```
-   The project ref is in your project's dashboard URL: `supabase.com/dashboard/project/<project-ref>`.
+## Admin console (`admin/`)
 
-4. **Push the schema**:
-   ```bash
-   supabase db push
-   ```
-   This runs every file in `supabase/migrations/` in order, creating the tables, RLS policies,
-   functions, and seeding the 8 mock series. Safe to re-run — the seed uses `on conflict do nothing`.
+A desktop web app for the content team (Vite + React). English by default; the **EN | 中文** switch
+(sidebar, and top-right of the sign-in page) changes the language and is remembered per browser.
+All UI text lives in `admin/src/lib/i18n.tsx`; a test fails if Chinese is hard-coded anywhere else.
 
-   *(No CLI? You can instead paste each migration file's contents, in order, into the Supabase
-   dashboard's SQL Editor and run them one at a time.)*
+- **总览** — series/episodes/videos, storage minutes, today's delivered minutes vs budget, open abuse flags.
+- **剧集与上传** — create/edit series (poster upload), and per series: **bulk upload** (drop a folder of
+  `ep01.mp4…`, set the paywall rule — first N free, listed episodes ad-unlock, rest coins or members —
+  then 2 resumable tus uploads at a time with progress; auto-publish when Cloudflare finishes),
+  episode table (publish toggle, edit title/paywall, replace or upload a video, delete).
+- **成本与预算** — 30-day delivered minutes chart with estimated cost, storage cost, and every
+  `app_config` knob (budget, rate limits, starting coins, simulated payments).
+- **异常与日志** — open abuse flags with one-click unblock, **find the account behind a watermark
+  code** (or an email), its playback log, and manual playback blocks.
 
-5. **Get your API credentials** from Project Settings → API in the dashboard: the **Project URL**
-   and the **anon/public key**. The app repo needs these as `EXPO_PUBLIC_SUPABASE_URL` and
-   `EXPO_PUBLIC_SUPABASE_ANON_KEY` — see that repo's `.env.example`.
+Sign-in is passwordless: enter the email, open the one-time link (Supabase magic link, PKCE — open it in
+the same browser). The form never creates accounts and does not reveal which emails exist. Only accounts
+with `profiles.is_admin = true` get in; everyone else is signed out immediately, and the database enforces the same through RLS and the `admin_*` RPCs
+(`20261010120000_admin_console.sql`). The app holds only the public anon key.
 
-6. **Enable anonymous sign-ins** (used for "Continue as Guest"): Authentication → Sign In / Providers
-   → toggle **Anonymous Sign-Ins** on.
-
-## Optional: Google / Apple sign-in
-
-The app ships with Google and Apple sign-in buttons wired to Supabase's OAuth flow, but they're
-inert until you configure the providers:
-
-- **Google**: create an OAuth Client ID in [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-  (type: Web application), add the redirect URL Supabase gives you (Authentication → Providers →
-  Google) as an authorized redirect URI, then paste the client ID/secret into that same Supabase
-  provider screen.
-- **Apple**: requires an active Apple Developer Program membership. Follow
-  [Supabase's Apple provider guide](https://supabase.com/docs/guides/auth/social-login/auth-apple)
-  to create a Services ID + key, then configure it the same way under Authentication → Providers →
-  Apple. Note: Apple's App Store guidelines expect native Sign In with Apple (not just OAuth-in-a-
-  browser) on iOS if other social logins are offered — treat this as a pre-launch follow-up, not
-  required for development/testing.
-
-Until configured, tapping those buttons in the app will surface Supabase's "provider not enabled"
-error — expected, not a bug.
-
-## Adding content (real videos)
-
-`series` and `episodes` are public-read, no-client-write (enforced by RLS — see
-`20260802000003_rls_policies.sql`). `episodes.video_uri` is just a plain URL — the app doesn't care
-where it's hosted, only that it resolves to a playable `.mp4`. Video files are stored in a public
-Supabase Storage bucket (`episode-videos`, created by `20260803000001_video_storage.sql`); uploads
-are denied for regular clients by default (no insert policy on `storage.objects` for this bucket)
-and only happen through `scripts/add-episode.js` using the service-role key, which bypasses RLS.
-
-**One-time setup for the script:**
 ```bash
-npm install                       # from this repo's root
-cp scripts/.env.example scripts/.env
+cd admin
+npm install --workspaces=false   # the repo root is an npm workspace; keep admin standalone
+cp .env.example .env             # Supabase URL + anon key (public values)
+npm run dev                      # http://localhost:5174
+npm test                         # episode file matching, paywall rules, cost maths
+npm run build                    # static site in admin/dist (deploy anywhere, e.g. Vercel)
 ```
-Fill in `scripts/.env` with your Project URL and **service_role** key (Project Settings → API —
-not the anon key; this one bypasses RLS, so never commit it or use it in the app).
 
-**Adding an episode:**
+Make someone an admin: create the account (Supabase dashboard → Authentication → Add user, no password
+needed, tick *Auto Confirm User*), then run the SQL under "First admin" above with their email. The
+site's URL (e.g. `http://localhost:5174`, later the deployed domain) must be in Authentication → URL
+Configuration → Redirect URLs. Supabase's built-in mailer only sends a few emails per hour; set up
+custom SMTP before more people use it.
+
+## Adding content
+
+**A whole series** (folder of `ep01.mp4`, `ep02.mp4`, …; the series row must exist):
 ```bash
-npm run add-episode -- \
-  --series crimson-contract --number 9 --title "The Reckoning" \
-  --file ./my-episode.mp4 --duration 620 --access coin --coin-price 20
+npm run upload-series -- --series crimson-contract --dir "D:/videos/crimson" \
+  --access "1-5:free,6-8:ad_unlock,9-:coin:20" --publish
 ```
-This uploads the file to `episode-videos/<series>/ep<number>.mp4`, then upserts the matching row in
-`episodes` (safe to re-run for the same `--series`/`--number` — it'll overwrite both the file and
-the row). `--access` is one of `free` / `coin` / `subscriber` / `ad_unlock`; `--coin-price` is
-required only for `coin`. Pass `--id <episode-id>` to override the auto-generated
-`<series>-ep<number>` id.
+Resumable: re-run the same command after an interruption. `--publish` waits for Cloudflare to
+finish and publishes ready episodes. `--replace` re-uploads episodes that already have a video.
 
-Supabase's free tier caps individual file uploads at 50MB — compress episodes accordingly, or
-upgrade the project plan if a clip needs to be larger.
+**Single episodes** from the app's `/admin` screens (uses `admin-video-upload`).
 
-For adding a brand-new **series** (not just an episode), there's no script yet — write a plain
-`insert into public.series (...)` statement (see `20260802000005_seed_content.sql` for the column
-shapes) and run it via the SQL Editor, same as the original seed data.
+**Demo videos for development:** `npm run seed-demo-videos` attaches a 10-second sample clip
+(through the normal signed/webhook path) to every published episode that has no video. The live
+project's 54 seed episodes have them. Real uploads replace them automatically.
 
-The app itself also has an in-app admin panel (`/admin` in the Expo app) for creating/editing
-series and episodes, including uploading video files, from the browser using the signed-in
-admin's own session — no service role key needed for day-to-day content work. This script remains
-useful for bulk/scripted uploads.
+**New series:** insert into `public.series` (admin UI or SQL; see the seed for column shapes).
+Posters: `npm run add-poster -- --series <id> --file poster.jpg`.
 
-**Granting admin access:** `is_admin` on `profiles` starts `false` for everyone and can only be
-flipped via the Supabase SQL Editor (or another service-role/superuser session) — a trigger added
-in `20260813000001_prevent_admin_self_escalation.sql` blocks any authenticated client request from
-setting its own `is_admin`, closing a self-escalation hole that existed in the original
-`admin_role` migration (RLS there only checked row ownership, not which column changed). To grant
-the first admin, run in the SQL Editor:
+## Operating it
 
-```sql
-update public.profiles
-set is_admin = true
-where user_id = (select id from auth.users where email = 'you@example.com');
+All knobs are rows in `public.app_config` (change with SQL, takes effect immediately):
+
+| key | default | |
+|---|---|---|
+| `simulated_payments` | `true` | turn **off** before launch (disables `simulate_*`, `reset_my_data`, `demo_*`) |
+| `starting_coins_guest` / `_member` | 50 / 150 | |
+| `daily_mission_reward` | 20 | |
+| `ad_unlocks_per_day` | 20 | until ads are verified server-side |
+| `playback_token_ttl_seconds` | 900 | |
+| `playback_max_tokens_per_10min` | 60 | breach → playback blocked + `abuse_flags` row |
+| `playback_max_episodes_per_hour` | 80 | |
+| `playback_block_minutes` | 60 | |
+| `daily_minutes_budget` | 0 (off) | Stream minutes/day; at `budget_soft_ratio` (0.8) free episodes stop, at 100% free + ad-unlock stop; paid keep playing |
+
+Cost reference (Cloudflare Stream): storage $5 / 1,000 min / month, delivery $1 / 1,000 min
+delivered (buffering counts), encoding free.
+
+Watch: `abuse_flags` (clear with `admin_resolve_abuse_flag`), `playback_events`,
+`stream_usage_daily`, `video_assets` where `status = 'error'`.
+
+## Tests
+
+```bash
+npm test                         # unit tests: token signing, webhook HMAC, Stream API client, tus upload
 ```
+SQL smoke tests: run `supabase/tests/*.sql` as `postgres` (SQL Editor / MCP). Each ends with
+`ALL_TESTS_PASSED` raised as an error so everything rolls back.
 
-(For a guest/anonymous account with no email, look up the id in the `auth.users` table by
-`created_at` instead.) Once you're an admin, `/admin` becomes reachable from the app; you can
-promote further admins the same way, or extend the admin UI to do it in-app later.
+## Not done yet
 
-## Non-goals (for now)
-
-- **Real payments.** No Stripe/RevenueCat/App Store IAP integration. Coin purchases and membership
-  activation in the app are still simulated at the trigger level — tapping "Confirm purchase"
-  writes directly to `wallets`/`transactions`/`subscriptions` without a real charge. Wiring a real
-  payment processor is the natural next step once you have a merchant/App Store Connect account.
-- **Native Apple Sign In** (see above).
-- **Syncing device-local settings** (notifications toggle, playback quality, subtitles-by-default,
-  language) — these intentionally stay in the app's local AsyncStorage, not this database.
-- **A CMS/admin portal** for managing series/episodes — direct SQL only, for now.
+- Real App Store / Google Play billing (RevenueCat webhook) — purchases are simulated server-side.
+- Server-side ad verification (AdMob SSV) for `redeem_ad_reward` / daily mission.
+- Cloudflare Turnstile captcha on anonymous sign-in (needs app support).
+- Dropping `episodes.video_uri` and the old public `episode-videos` bucket once the app has
+  switched to `playback-token`.
+- Native Apple Sign In; Google OAuth on the new project.
