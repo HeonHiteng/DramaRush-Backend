@@ -41,6 +41,9 @@ const en = {
   'video.failed': 'Failed',
   'video.pending': 'Awaiting upload',
   'video.processing': 'Processing',
+  'video.landscape': 'Landscape',
+  'video.portrait': 'Portrait',
+  'video.square': 'Square',
 
   // shell + auth
   'app.checking': 'Checking sign-in…',
@@ -185,6 +188,8 @@ const en = {
   'bulk.reupload': 'Re-upload episodes that already have a video (replaces it)',
   'bulk.colFile': 'File',
   'bulk.colSize': 'Size',
+  'bulk.colPicture': 'Picture',
+  'bulk.landscapeWarn': '{n} of these videos are landscape. The app is vertical: it shows them with black bars above and below, and viewers can tap "Watch in landscape" to see them full screen.',
   'bulk.colEpisode': 'Episode',
   'bulk.colVideo': 'Current video',
   'bulk.skip': ' · already has a video, skipped',
@@ -353,6 +358,9 @@ const zh: Record<MsgKey, string> = {
   'video.failed': '失败',
   'video.pending': '等待上传',
   'video.processing': '处理中',
+  'video.landscape': '横屏',
+  'video.portrait': '竖屏',
+  'video.square': '方形',
 
   'app.checking': '验证登录…',
   'nav.overview': '总览',
@@ -491,6 +499,8 @@ const zh: Record<MsgKey, string> = {
   'bulk.reupload': '已有视频的集也重新上传（替换旧视频）',
   'bulk.colFile': '文件',
   'bulk.colSize': '大小',
+  'bulk.colPicture': '画面',
+  'bulk.landscapeWarn': '其中 {n} 个是横屏视频。App 是竖屏的，会显示上下黑边，观众可以点「横屏观看」全屏看。',
   'bulk.colEpisode': '剧集',
   'bulk.colVideo': '现有视频',
   'bulk.skip': ' · 已有视频，跳过',

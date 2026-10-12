@@ -61,6 +61,7 @@ scripts/
   cloudflare-setup.js                  one-time: signing key, watermark, webhook, secrets file
   upload-series.js                     bulk upload a folder of episodes (resumable)
   add-poster.js                        upload a series poster (public bucket)
+  backfill-video-dimensions.js         one-off: picture size for videos uploaded before 2026-10-12
 tests/                                 unit tests (node --test)
 docs/frontend-api.md                   what the app must call / change
 ```

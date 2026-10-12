@@ -3,7 +3,8 @@
  * comes from the Webhook-Signature HMAC instead).
  *
  * When a video finishes processing:
- *   ready -> video_assets.status = ready, episode duration filled in, and any
+ *   ready -> video_assets.status = ready, episode duration and picture size
+ *            (video_width/height) filled in, and any
  *            older video for the same episode is deleted from Cloudflare
  *   error -> video_assets.status = error with the reason
  * Videos we don't know about (e.g. uploaded by hand in the dashboard) are
@@ -13,11 +14,13 @@ import { env, json, optionalEnv, serviceClient } from "../_shared/http.ts";
 import { verifyWebhookSignature } from "../_shared/webhook-signature.ts";
 import { deleteVideo, type StreamApiConfig } from "../_shared/cloudflare-stream.ts";
 import { STREAM_UID_RE } from "../_shared/stream-token.ts";
+import { videoDimensions } from "../_shared/video-dimensions.ts";
 
 interface StreamWebhookBody {
   uid?: string;
   readyToStream?: boolean;
   duration?: number;
+  input?: { width?: number; height?: number };
   status?: { state?: string; errorReasonCode?: string; errReasonCode?: string; errorReasonText?: string };
 }
 
@@ -63,18 +66,31 @@ Deno.serve(async (req) => {
 
   if (state === "ready" || (body.readyToStream && state !== "error")) {
     const duration = typeof body.duration === "number" && body.duration > 0 ? body.duration : null;
+    const size = videoDimensions(body);
 
     const { error } = await admin
       .from("video_assets")
-      .update({ status: "ready", duration_sec: duration, error_reason: null, ready_at: now, updated_at: now })
+      .update({
+        status: "ready",
+        duration_sec: duration,
+        width: size?.width ?? null,
+        height: size?.height ?? null,
+        error_reason: null,
+        ready_at: now,
+        updated_at: now,
+      })
       .eq("id", asset.id);
     if (error) {
       console.error("mark ready failed", error.message);
       return json({ error: "server_error" }, 500);
     }
 
-    if (duration !== null) {
-      await admin.from("episodes").update({ duration_sec: Math.round(duration) }).eq("id", asset.episode_id);
+    // The app picks letterboxing vs. full-bleed from the episode's picture size.
+    const episodePatch: Record<string, number> = {};
+    if (duration !== null) episodePatch.duration_sec = Math.round(duration);
+    if (size) Object.assign(episodePatch, { video_width: size.width, video_height: size.height });
+    if (Object.keys(episodePatch).length > 0) {
+      await admin.from("episodes").update(episodePatch).eq("id", asset.episode_id);
     }
 
     // Replace: remove older ready/failed videos of this episode. In-flight

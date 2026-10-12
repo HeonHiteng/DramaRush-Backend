@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState, type DragEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import type { Episode, VideoAsset } from '../lib/api';
 import { accessFor, episodeId, matchEpisodeFiles, parseNumberList, suggestNumbers, type PaywallRule } from '../lib/episodes';
 import type { UploadJob } from '../lib/uploadJob';
 import { useI18n } from '../lib/i18n';
-import { ACCESS_KEYS, AccessBadge, fmtBytes, VideoBadge } from '../ui';
+import { orientationOf, probeVideoSize } from '../lib/videoSize';
+import { ACCESS_KEYS, AccessBadge, fmtBytes, OrientationTag, VideoBadge } from '../ui';
 import type { Uploads } from './useUploads';
 
 /** Same file dropped again → same key (also used for typed episode numbers). */
@@ -54,6 +55,26 @@ export function BulkUpload({
   const [autoPublish, setAutoPublish] = useState(true);
   /** Episode numbers typed for files whose names have none (by fileKey). */
   const [manualNumbers, setManualNumbers] = useState<Record<string, string>>({});
+  /** Picture size read locally from each dropped video (null = couldn't tell). */
+  const [sizes, setSizes] = useState<Record<string, { width: number; height: number } | null>>({});
+
+  // Read each new file's picture size in the browser, a few at a time.
+  useEffect(() => {
+    const todo = files.filter((f) => !(fileKey(f) in sizes));
+    if (todo.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < todo.length && !cancelled; i += 3) {
+        const batch = todo.slice(i, i + 3);
+        const found = await Promise.all(batch.map((f) => probeVideoSize(f)));
+        if (!cancelled) setSizes((prev) => ({ ...prev, ...Object.fromEntries(batch.map((f, j) => [fileKey(f), found[j]])) }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files]);
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
 
@@ -98,6 +119,7 @@ export function BulkUpload({
       const willSetAccess = !existing || applyToExisting;
       return { key: fileKey(file), number, text, file, id, existing, video, planned, skip, willSetAccess };
     });
+  const landscapeCount = rows.filter((r) => !r.skip && orientationOf(sizes[r.key]?.width, sizes[r.key]?.height) === 'landscape').length;
   const toUpload = rows.filter((r): r is typeof r & { number: number; id: string } => !r.skip && r.number !== null && r.id !== null);
   const totalBytes = toUpload.reduce((sum, r) => sum + r.file.size, 0);
 
@@ -117,6 +139,7 @@ export function BulkUpload({
   const clearFiles = () => {
     setFiles([]);
     setManualNumbers({});
+    setSizes({});
   };
 
   const addFiles = (list: File[]) => setFiles((prev) => [...prev, ...list.filter((f) => !prev.some((p) => p.name === f.name && p.size === f.size))]);
@@ -231,6 +254,7 @@ export function BulkUpload({
                     <th style={{ width: 60 }}>{t('ep.colEp')}</th>
                     <th>{t('bulk.colFile')}</th>
                     <th style={{ width: 100 }}>{t('bulk.colSize')}</th>
+                    <th style={{ width: 150 }}>{t('bulk.colPicture')}</th>
                     <th style={{ width: 120 }}>{t('bulk.colEpisode')}</th>
                     <th style={{ width: 140 }}>{t('ep.fieldAccess')}</th>
                     <th style={{ width: 130 }}>{t('bulk.colVideo')}</th>
@@ -262,6 +286,13 @@ export function BulkUpload({
                       </td>
                       <td className="num">{fmtBytes(r.file.size)}</td>
                       <td>
+                        {r.key in sizes ? (
+                          sizes[r.key] ? <OrientationTag width={sizes[r.key]!.width} height={sizes[r.key]!.height} /> : <span className="muted">—</span>
+                        ) : (
+                          <span className="muted">…</span>
+                        )}
+                      </td>
+                      <td>
                         {r.number === null ? null : r.existing ? (
                           <span className="badge plain">{t('bulk.existing')}</span>
                         ) : (
@@ -285,6 +316,7 @@ export function BulkUpload({
             </div>
 
             {match.unnumbered.length > 0 && <p className="dim" style={{ margin: 0, fontSize: 13 }}>{t('bulk.unnumbered', { n: match.unnumbered.length })}</p>}
+            {landscapeCount > 0 && <p className="warn-text">{t('bulk.landscapeWarn', { n: landscapeCount })}</p>}
             {numberError && <p className="error-text" style={{ margin: 0 }}>{numberError}</p>}
 
             {(match.unmatched.length > 0 || match.duplicates.length > 0) && (

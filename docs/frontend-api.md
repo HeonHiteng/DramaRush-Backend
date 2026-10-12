@@ -164,12 +164,14 @@ How to use it:
 
 ```ts
 supabase.from('episodes')
-  .select('id, series_id, number, title, duration_sec, access, coin_price, published')
+  .select('id, series_id, number, title, duration_sec, access, coin_price, published, video_width, video_height')
   .order('number');
 ```
 
 - Only `published` episodes are returned to users (admins see all) — no client filter needed.
 - `duration_sec` is filled in automatically from the uploaded video.
+- `video_width` / `video_height` (pixels, from Cloudflare) tell landscape from portrait: the app
+  letterboxes landscape videos (`contentFit="contain"`) and offers an in-app rotated view.
 
 New read-only tables (anon + signed-in):
 
