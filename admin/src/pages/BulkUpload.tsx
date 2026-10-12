@@ -1,10 +1,13 @@
 import { useMemo, useRef, useState, type DragEvent } from 'react';
 import type { Episode, VideoAsset } from '../lib/api';
-import { accessFor, episodeId, matchEpisodeFiles, parseNumberList, type PaywallRule } from '../lib/episodes';
+import { accessFor, episodeId, matchEpisodeFiles, parseNumberList, suggestNumbers, type PaywallRule } from '../lib/episodes';
 import type { UploadJob } from '../lib/uploadJob';
 import { useI18n } from '../lib/i18n';
 import { ACCESS_KEYS, AccessBadge, fmtBytes, VideoBadge } from '../ui';
 import type { Uploads } from './useUploads';
+
+/** Same file dropped again → same key (also used for typed episode numbers). */
+const fileKey = (f: File) => `${f.name}:${f.size}:${f.lastModified}`;
 
 /** Collects files from a drop, including whole folders. */
 async function filesFromDrop(e: DragEvent): Promise<File[]> {
@@ -49,6 +52,8 @@ export function BulkUpload({
   const [applyToExisting, setApplyToExisting] = useState(false);
   const [reuploadReady, setReuploadReady] = useState(false);
   const [autoPublish, setAutoPublish] = useState(true);
+  /** Episode numbers typed for files whose names have none (by fileKey). */
+  const [manualNumbers, setManualNumbers] = useState<Record<string, string>>({});
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
 
@@ -63,20 +68,41 @@ export function BulkUpload({
     ruleError = e instanceof Error ? e.message : String(e);
   }
 
-  const rows = match.matched.map(({ number, file }) => {
-    const existing = byNumber.get(number);
-    const id = episodeId(seriesId, number);
-    const video = existing ? videos.get(existing.id) : undefined;
-    const planned = rule ? accessFor(number, rule) : null;
-    const skip = !!video && video.status === 'ready' && !reuploadReady;
-    const willSetAccess = !existing || applyToExisting;
-    return { number, file, id, existing, video, planned, skip, willSetAccess };
-  });
-  const toUpload = rows.filter((r) => !r.skip);
+  // Videos without a number in the name get the next free numbers, editable per file.
+  const suggested = suggestNumbers(match.unnumbered.length, [...episodes.map((e) => e.number), ...match.matched.map((m) => m.number)]);
+  const entries = [
+    ...match.matched.map(({ number, file }) => ({ file, number: number as number | null, text: null as string | null })),
+    ...match.unnumbered.map((file, i) => {
+      const text = manualNumbers[fileKey(file)] ?? String(suggested[i]);
+      const n = /^\d{1,4}$/.test(text.trim()) ? Number(text.trim()) : 0;
+      return { file, number: n >= 1 ? n : null, text };
+    }),
+  ];
+  const counts = new Map<number, number>();
+  for (const e of entries) if (e.number !== null) counts.set(e.number, (counts.get(e.number) ?? 0) + 1);
+  const clashes = [...counts].filter(([, c]) => c > 1).map(([n]) => n);
+  const numberError = entries.some((e) => e.number === null)
+    ? t('bulk.numberInvalid')
+    : clashes.length > 0
+      ? t('bulk.numberClash', { list: clashes.join(', ') })
+      : null;
+
+  const rows = entries
+    .sort((a, b) => (a.number ?? Infinity) - (b.number ?? Infinity))
+    .map(({ file, number, text }) => {
+      const existing = number !== null ? byNumber.get(number) : undefined;
+      const id = number !== null ? episodeId(seriesId, number) : null;
+      const video = existing ? videos.get(existing.id) : undefined;
+      const planned = rule && number !== null ? accessFor(number, rule) : null;
+      const skip = !!video && video.status === 'ready' && !reuploadReady;
+      const willSetAccess = !existing || applyToExisting;
+      return { key: fileKey(file), number, text, file, id, existing, video, planned, skip, willSetAccess };
+    });
+  const toUpload = rows.filter((r): r is typeof r & { number: number; id: string } => !r.skip && r.number !== null && r.id !== null);
   const totalBytes = toUpload.reduce((sum, r) => sum + r.file.size, 0);
 
   const start = () => {
-    if (!rule) return;
+    if (!rule || numberError) return;
     uploads.enqueue(
       toUpload.map((r) => ({
         job: { episodeId: r.id, number: r.number, file: r.file, state: 'queued', sent: 0 } satisfies UploadJob,
@@ -85,7 +111,12 @@ export function BulkUpload({
         publishWhenReady: autoPublish,
       }))
     );
+    clearFiles();
+  };
+
+  const clearFiles = () => {
     setFiles([]);
+    setManualNumbers({});
   };
 
   const addFiles = (list: File[]) => setFiles((prev) => [...prev, ...list.filter((f) => !prev.some((p) => p.name === f.name && p.size === f.size))]);
@@ -97,7 +128,7 @@ export function BulkUpload({
         <span className="hint">{t('bulk.hint')}</span>
         {files.length > 0 && (
           <div className="right">
-            <button className="btn ghost sm" onClick={() => setFiles([])}>
+            <button className="btn ghost sm" onClick={clearFiles}>
               {t('bulk.clear')}
             </button>
           </div>
@@ -207,14 +238,36 @@ export function BulkUpload({
                 </thead>
                 <tbody>
                   {rows.map((r) => (
-                    <tr key={r.id} style={{ opacity: r.skip ? 0.45 : 1 }}>
-                      <td className="num">EP{String(r.number).padStart(2, '0')}</td>
+                    <tr key={r.key} style={{ opacity: r.skip ? 0.45 : 1 }}>
+                      <td className="num">
+                        {r.text !== null ? (
+                          <input
+                            className={`input mono ${r.number === null || (r.number !== null && clashes.includes(r.number)) ? 'invalid' : ''}`}
+                            style={{ width: 64, padding: '4px 8px' }}
+                            inputMode="numeric"
+                            value={r.text}
+                            aria-label={t('bulk.numberAria', { file: r.file.name })}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setManualNumbers((prev) => ({ ...prev, [r.key]: value }));
+                            }}
+                          />
+                        ) : (
+                          `EP${String(r.number).padStart(2, '0')}`
+                        )}
+                      </td>
                       <td className="mono" style={{ fontSize: 12, wordBreak: 'break-all' }}>
                         {r.file.name}
                         {r.skip && <span className="muted">{t('bulk.skip')}</span>}
                       </td>
                       <td className="num">{fmtBytes(r.file.size)}</td>
-                      <td>{r.existing ? <span className="badge plain">{t('bulk.existing')}</span> : <span className="badge blue plain">{t('bulk.new')}</span>}</td>
+                      <td>
+                        {r.number === null ? null : r.existing ? (
+                          <span className="badge plain">{t('bulk.existing')}</span>
+                        ) : (
+                          <span className="badge blue plain">{t('bulk.new')}</span>
+                        )}
+                      </td>
                       <td>
                         {r.willSetAccess && r.planned ? (
                           <AccessBadge access={r.planned.access} coinPrice={r.planned.coinPrice} />
@@ -231,6 +284,9 @@ export function BulkUpload({
               </table>
             </div>
 
+            {match.unnumbered.length > 0 && <p className="dim" style={{ margin: 0, fontSize: 13 }}>{t('bulk.unnumbered', { n: match.unnumbered.length })}</p>}
+            {numberError && <p className="error-text" style={{ margin: 0 }}>{numberError}</p>}
+
             {(match.unmatched.length > 0 || match.duplicates.length > 0) && (
               <p className="dim" style={{ margin: 0, fontSize: 13 }}>
                 {match.unmatched.length > 0 && (
@@ -245,7 +301,7 @@ export function BulkUpload({
             )}
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <button className="btn primary" disabled={!rule || toUpload.length === 0} onClick={start}>
+              <button className="btn primary" disabled={!rule || !!numberError || toUpload.length === 0} onClick={start}>
                 {t('bulk.start', { n: toUpload.length, size: fmtBytes(totalBytes) })}
               </button>
               <span className="muted" style={{ fontSize: 12 }}>
