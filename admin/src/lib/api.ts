@@ -54,6 +54,9 @@ export interface VideoAsset {
   duration_sec: number | null;
   error_reason: string | null;
   created_at: string;
+  /** Picture size from Cloudflare (null until the video is ready). */
+  width: number | null;
+  height: number | null;
 }
 
 export interface DashboardStats {
@@ -164,7 +167,7 @@ export const api = {
     const rows = await must<VideoAsset[]>(
       supabase
         .from('video_assets')
-        .select('id, episode_id, status, duration_sec, error_reason, created_at')
+        .select('id, episode_id, status, duration_sec, error_reason, created_at, width, height')
         .in('episode_id', episodeIds)
         .order('created_at', { ascending: false })
     );

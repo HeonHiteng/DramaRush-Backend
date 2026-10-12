@@ -4,7 +4,7 @@ import { api, type Episode, type VideoAsset } from '../lib/api';
 import type { EpisodeAccess } from '../lib/episodes';
 import type { UploadJob } from '../lib/uploadJob';
 import { useI18n } from '../lib/i18n';
-import { ACCESS_KEYS, AccessBadge, Confirm, ErrorBox, fmtBytes, fmtDuration, Loading, Modal, useLoad, useToast, VideoBadge } from '../ui';
+import { ACCESS_KEYS, AccessBadge, Confirm, ErrorBox, fmtBytes, fmtDuration, Loading, Modal, OrientationTag, useLoad, useToast, VideoBadge } from '../ui';
 import { BulkUpload } from './BulkUpload';
 import { PosterArt } from './SeriesListPage';
 import { SeriesForm } from './SeriesForm';
@@ -238,7 +238,7 @@ function EpisodeTable({
                 <th style={{ width: 64 }}>{t('ep.colEp')}</th>
                 <th>{t('ep.colTitle')}</th>
                 <th style={{ width: 110 }}>{t('ep.colAccess')}</th>
-                <th style={{ width: 150 }}>{t('ep.colVideo')}</th>
+                <th style={{ width: 190 }}>{t('ep.colVideo')}</th>
                 <th style={{ width: 70 }}>{t('ep.colPublished')}</th>
                 <th style={{ width: 250 }}>{t('ep.colUpload')}</th>
                 <th style={{ width: 210 }} />
@@ -262,6 +262,11 @@ function EpisodeTable({
                     </td>
                     <td>
                       <VideoBadge video={videos.get(ep.id)} />
+                      {videos.get(ep.id)?.status === 'ready' && (
+                        <div style={{ marginTop: 4 }}>
+                          <OrientationTag width={videos.get(ep.id)?.width} height={videos.get(ep.id)?.height} />
+                        </div>
+                      )}
                     </td>
                     <td>
                       <button

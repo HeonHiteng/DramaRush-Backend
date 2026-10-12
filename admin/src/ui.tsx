@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import type { EpisodeAccess } from './lib/episodes';
 import type { VideoAsset } from './lib/api';
 import { currentLocale, t, useI18n, type MsgKey } from './lib/i18n';
+import { orientationOf } from './lib/videoSize';
 
 // ---------------------------------------------------------------- format
 
@@ -61,6 +62,18 @@ export function VideoBadge({ video }: { video: VideoAsset | undefined }) {
     );
   if (video.status === 'pending_upload') return <span className="badge amber pulse">{t('video.pending')}</span>;
   return <span className="badge amber pulse">{t('video.processing')}</span>;
+}
+
+/** Landscape / portrait tag with the picture size; landscape is highlighted (black bars in the app). */
+export function OrientationTag({ width, height }: { width: number | null | undefined; height: number | null | undefined }) {
+  const { t } = useI18n();
+  const o = orientationOf(width, height);
+  if (!o) return null;
+  return (
+    <span className={`badge plain ${o === 'landscape' ? 'amber' : ''}`} title={`${width}×${height}`}>
+      {t(o === 'landscape' ? 'video.landscape' : o === 'portrait' ? 'video.portrait' : 'video.square')} <span className="mono">{width}×{height}</span>
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------- toast

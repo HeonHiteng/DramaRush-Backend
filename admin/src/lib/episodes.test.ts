@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accessFor, matchEpisodeFiles, parseNumberList, slugify, SERIES_ID_RE } from './episodes';
+import { accessFor, episodeNumberFromName, matchEpisodeFiles, parseNumberList, slugify, SERIES_ID_RE, suggestNumbers } from './episodes';
 import { budgetLevel, deliveryCost, storageCost } from './costs';
 
 const f = (name: string) => ({ name });
@@ -15,13 +15,29 @@ describe('matchEpisodeFiles', () => {
     const r = matchEpisodeFiles([f('series/ep01.mp4'), f('ep1.mp4'), f('poster.jpg'), f('trailer.mp4'), f('ep0.mp4')]);
     expect(r.matched).toEqual([{ number: 1, file: { name: 'series/ep01.mp4' } }]);
     expect(r.duplicates).toEqual([1]);
-    expect(r.unmatched.map((x) => x.name)).toEqual(['poster.jpg', 'trailer.mp4', 'ep0.mp4']);
+    expect(r.unmatched.map((x) => x.name)).toEqual(['poster.jpg']);
+    expect(r.unnumbered.map((x) => x.name)).toEqual(['ep0.mp4', 'trailer.mp4']);
+  });
+
+  it('finds numbers inside longer names', () => {
+    expect(episodeNumberFromName('\u4eba\u5fc3_\u7b2c3\u96c6.mp4')).toBe(3);
+    expect(episodeNumberFromName('\u4eba\u5fc3 \u7b2c 12 \u8bdd.mov')).toBe(12);
+    expect(episodeNumberFromName('Heart.S01E07.1080p.mp4')).toBe(7);
+    expect(episodeNumberFromName('EP05_the_reveal.mp4')).toBe(5);
+    expect(episodeNumberFromName('deep 2.mp4')).toBeNull();
+    expect(episodeNumberFromName('\u77ed\u5267_\u4eba\u5fc3_\u521b\u4f5c_20261012_025721.mp4')).toBeNull();
+    expect(episodeNumberFromName('ep3.jpg')).toBeNull();
+  });
+
+  it('numbers name-less videos after everything taken', () => {
+    expect(suggestNumbers(2, [1, 2, 7])).toEqual([8, 9]);
+    expect(suggestNumbers(2, [])).toEqual([1, 2]);
   });
 });
 
 describe('paywall rules', () => {
   it('parses lists and ranges', () => {
-    expect(parseNumberList('4, 6-8，10')).toEqual([4, 6, 7, 8, 10]);
+    expect(parseNumberList('4, 6-8\uff0c10')).toEqual([4, 6, 7, 8, 10]);
     expect(parseNumberList('  ')).toEqual([]);
     expect(() => parseNumberList('4,x')).toThrow();
   });

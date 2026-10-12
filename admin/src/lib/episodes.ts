@@ -8,8 +8,30 @@ import { t } from './i18n';
 
 export type EpisodeAccess = 'free' | 'coin' | 'subscriber' | 'ad_unlock';
 
-/** ep01.mp4, EP 2.mov, episode-3.mkv, 004.mp4 … */
+/** ep01.mp4, EP 2.mov, episode-3.mkv, 004.mp4 … (same as scripts/upload-series.js) */
 export const VIDEO_FILE_RE = /^(?:ep(?:isode)?[\s_-]*)?0*(\d{1,4})\.(mp4|mov|m4v|mkv|webm)$/i;
+const VIDEO_EXT_RE = /\.(mp4|mov|m4v|mkv|webm)$/i;
+
+/**
+ * Looser forms inside longer names, tried when VIDEO_FILE_RE doesn't match:
+ * Chinese "di 3 ji / di 03 hua" (written as escapes), S01E03, EP03_title.
+ */
+const LOOSE_NUMBER_RES = [
+  /\u7b2c\s*0*(\d{1,4})\s*[\u96c6\u8bdd\u8a71]/,
+  /s\d{1,2}[\s._-]*e0*(\d{1,4})(?!\d)/i,
+  /(?:^|[^a-z])ep(?:isode)?[\s._-]*0*(\d{1,4})(?!\d)/i,
+];
+
+/** The episode number in a video file name, or null when there isn't one. */
+export function episodeNumberFromName(name: string): number | null {
+  const base = name.split(/[\\/]/).pop() ?? name;
+  if (!VIDEO_EXT_RE.test(base)) return null;
+  for (const re of [VIDEO_FILE_RE, ...LOOSE_NUMBER_RES]) {
+    const m = re.exec(base);
+    if (m && Number(m[1]) >= 1) return Number(m[1]);
+  }
+  return null;
+}
 
 export interface MatchedFile<F> {
   file: F;
@@ -18,7 +40,9 @@ export interface MatchedFile<F> {
 
 export interface FileMatchResult<F> {
   matched: MatchedFile<F>[];
-  /** Files whose name doesn't look like an episode number. */
+  /** Videos with no episode number in the name, sorted by name; the admin numbers them. */
+  unnumbered: F[];
+  /** Files that aren't videos (posters, subtitles…); ignored. */
   unmatched: F[];
   /** Episode numbers that appear more than once (only the first file is kept). */
   duplicates: number[];
@@ -26,26 +50,30 @@ export interface FileMatchResult<F> {
 
 export function matchEpisodeFiles<F extends { name: string }>(files: F[]): FileMatchResult<F> {
   const byNumber = new Map<number, F>();
+  const unnumbered: F[] = [];
   const unmatched: F[] = [];
   const duplicates = new Set<number>();
   for (const file of files) {
-    const base = file.name.split(/[\\/]/).pop() ?? file.name;
-    const m = VIDEO_FILE_RE.exec(base);
-    if (!m) {
-      unmatched.push(file);
-      continue;
-    }
-    const n = Number(m[1]);
-    if (n < 1) {
-      unmatched.push(file);
-    } else if (byNumber.has(n)) {
-      duplicates.add(n);
+    const n = episodeNumberFromName(file.name);
+    if (n !== null) {
+      if (byNumber.has(n)) duplicates.add(n);
+      else byNumber.set(n, file);
+    } else if (VIDEO_EXT_RE.test(file.name)) {
+      unnumbered.push(file);
     } else {
-      byNumber.set(n, file);
+      unmatched.push(file);
     }
   }
   const matched = [...byNumber.entries()].sort((a, b) => a[0] - b[0]).map(([number, file]) => ({ number, file }));
-  return { matched, unmatched, duplicates: [...duplicates].sort((a, b) => a - b) };
+  unnumbered.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  return { matched, unnumbered, unmatched, duplicates: [...duplicates].sort((a, b) => a - b) };
+}
+
+/** Next free numbers after everything already taken, one per file. */
+export function suggestNumbers(count: number, taken: Iterable<number>): number[] {
+  let next = 1;
+  for (const n of taken) next = Math.max(next, n + 1);
+  return Array.from({ length: count }, (_, i) => next + i);
 }
 
 /** How new episodes are priced in a bulk upload. */
@@ -61,7 +89,7 @@ export interface PaywallRule {
 
 export function parseNumberList(input: string): number[] {
   const out = new Set<number>();
-  for (const part of input.split(/[,，\s]+/).filter(Boolean)) {
+  for (const part of input.split(/[,\uff0c\s]+/).filter(Boolean)) {
     const range = /^(\d+)\s*-\s*(\d+)$/.exec(part);
     if (range) {
       const [a, b] = [Number(range[1]), Number(range[2])].sort((x, y) => x - y);

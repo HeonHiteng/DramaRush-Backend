@@ -61,6 +61,7 @@ scripts/
   cloudflare-setup.js                  one-time: signing key, watermark, webhook, secrets file
   upload-series.js                     bulk upload a folder of episodes (resumable)
   add-poster.js                        upload a series poster (public bucket)
+  backfill-video-dimensions.js         one-off: picture size for videos uploaded before 2026-10-12
 tests/                                 unit tests (node --test)
 docs/frontend-api.md                   what the app must call / change
 ```
@@ -122,6 +123,12 @@ npm run dev                      # http://localhost:5174
 npm test                         # episode file matching, paywall rules, cost maths
 npm run build                    # static site in admin/dist (deploy anywhere, e.g. Vercel)
 ```
+
+**Hosted:** https://keybox-backend.vercel.app (Vercel project `keybox-backend`, team "Rain's projects",
+not Git-connected). Redeploy from `admin/` with `npx vercel deploy --prod`; the build reads the public
+`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` from the project's environment variables. The site URL
+must be listed in Supabase → Authentication → URL Configuration → Redirect URLs, or sign-in links
+fall back to the Site URL.
 
 Make someone an admin: create the account (Supabase dashboard → Authentication → Add user, no password
 needed, tick *Auto Confirm User*), then run the SQL under "First admin" above with their email. The
