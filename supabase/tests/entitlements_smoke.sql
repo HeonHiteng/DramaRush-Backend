@@ -26,7 +26,7 @@ begin
   -- ------------------------------------------------------- signup trigger
   assert (select balance from public.wallets where user_id = u_guest) = 50, 'guest starting coins should be 50';
   assert (select balance from public.wallets where user_id = u_member) = 150, 'member starting coins should be 150';
-  assert (select display_name from public.profiles where user_id = u_member) = 'Keybox Member', 'default member name';
+  assert (select display_name from public.profiles where user_id = u_member) = 'KBbox Member', 'default member name';
   assert (select public_code from public.profiles where user_id = u_guest) ~ '^[2-9A-HJ-NP-Z]{7}$', 'public_code format';
 
   -- ------------------------------------------------- act as a normal member
