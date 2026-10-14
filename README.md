@@ -1,6 +1,7 @@
-# Keybox Backend (Supabase + Cloudflare Stream)
+# KBbox Backend (Supabase + Cloudflare Stream)
 
-Backend for the [Keybox](https://github.com/HeonHiteng/DramaRush) vertical short-drama app
+Backend for the [KBbox](https://github.com/HeonHiteng/DramaRush) vertical short-drama app (renamed from
+"Keybox" on 2026-10-14; the Supabase project, Vercel URL and `keybox://` scheme keep the old name)
 (the app repo is still named `DramaRush`, the old placeholder name). There is no server to run:
 
 - **Supabase** — Postgres schema, Row Level Security, auth, and Edge Functions (`supabase/`).
