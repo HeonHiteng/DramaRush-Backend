@@ -1,6 +1,7 @@
-# Keybox Backend — project context for Claude
+# KBbox Backend — project context for Claude
 
-Backend for the **Keybox** short-drama app ("DramaRush" was a placeholder name; the folders and
+Backend for the **KBbox** short-drama app (earlier names: "DramaRush" placeholder, then "Keybox" —
+the Supabase project `keybox`, Vercel `keybox-backend` and scheme `keybox://` keep that name; the folders and
 GitHub repos `HeonHiteng/DramaRush` + `HeonHiteng/DramaRush-Backend` keep the old name). We own
 this repo only; the app (`../DramaRush`, Expo) belongs to the app team — changes they need go in
 `docs/frontend-api.md`, not into their repo.

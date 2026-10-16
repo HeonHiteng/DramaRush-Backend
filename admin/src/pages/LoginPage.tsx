@@ -43,7 +43,7 @@ export function LoginPage() {
       <section className="login-art" aria-hidden="true">
         <div className="strip" />
         <div className="slate">
-          Key
+          KB
           <br />
           box<span>.</span>
         </div>

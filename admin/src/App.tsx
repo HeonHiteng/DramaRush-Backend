@@ -55,7 +55,7 @@ function Shell() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">
-            Keybox<span>.</span>
+            KBbox<span>.</span>
           </div>
           <div className="brand-tag">Admin</div>
         </div>
