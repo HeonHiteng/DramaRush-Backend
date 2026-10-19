@@ -100,6 +100,13 @@ const { data, error } = await supabase.functions.invoke('playback-token', {
 }
 ```
 
+For a **guest** (anonymous session) the 200 body also has `"preview_seconds": 15`
+(`app_config.guest_preview_seconds`) and the token expires after
+`preview_seconds + 15` s. Stop playback at `preview_seconds` and show the
+"link an account" gate; don't auto-advance to the next episode. Don't cache a
+preview grant (it is never "fresh" by the usual 60 s margin) — request a new
+one each time. Members' bodies never contain `preview_seconds`.
+
 Reading the error code (supabase-js wraps non-2xx responses in `FunctionsHttpError`):
 
 ```ts
@@ -122,6 +129,7 @@ async function getPlayback(episodeId: string) {
 |---|---|---|
 | 401 | `not_authenticated` | No/expired session → sign in as guest and retry |
 | 403 | `not_entitled` | Locked (or unpublished) → paywall |
+| 403 | `account_required` | Guest asked for a non-free episode, or used up today's previews (`guest_previews_per_day`, UTC) → "link an account" gate (Google / WhatsApp), not the paywall |
 | 404 | `unavailable` | Video still processing / not uploaded → "coming soon" |
 | 429 | `rate_limited`, `blocked` | Too many requests; account temporarily blocked for playback → "try again later" |
 | 503 | `budget` | Free/ad episodes paused by the daily cost guard → "try again later" (paid episodes still play) |
@@ -140,7 +148,7 @@ How to use it:
    `<video>`. On web, check `video.canPlayType('application/vnd.apple.mpegurl')`
    and fall back to [hls.js](https://github.com/video-dev/hls.js) when it's
    empty. Test the Vercel build in Chrome and Firefox.
-3. Tokens last **15 minutes** (`expires_at`). If playback errors (HTTP 401/403
+3. Member tokens last **15 minutes** (`expires_at`; guest previews ~30 s). If playback errors (HTTP 401/403
    from Cloudflare) or the user resumes after `expires_at`, call
    `playback-token` again and continue from the current position. Re-requesting
    the same episode is cheap and expected.
@@ -179,7 +187,7 @@ New read-only tables (anon + signed-in):
 |---|---|
 | `coin_packages` | `id, coins, bonus_coins, price_usd, badge, store_product_id, sort_order` (only active rows) |
 | `subscription_plans` | `id, title, price_usd, billing_period, bonus_coins, store_product_id, sort_order` |
-| `app_config` (public rows) | `key, value` — `simulated_payments` (bool), `daily_mission_reward` (int), `ad_unlocks_per_day` (int) |
+| `app_config` (public rows) | `key, value` — `simulated_payments` (bool), `daily_mission_reward` (int), `ad_unlocks_per_day` (int), `welcome_bonus_coins` (int), `guest_preview_seconds` (int), `guest_previews_per_day` (int) |
 
 Hide the fake purchase buttons when `simulated_payments` is `false` (it will
 be switched off before launch, when real store billing arrives).
@@ -195,24 +203,56 @@ All require a signed-in session. Errors are thrown as PostgREST errors whose
 
 | RPC | Args | Returns | Notes |
 |---|---|---|---|
-| `unlock_episode_with_coins` | `{ p_episode_id }` | `boolean` | unchanged; `false` = not enough coins |
-| `redeem_ad_reward` | `{ p_episode_id }` | `boolean` | `false` = daily ad-unlock cap reached (`ad_unlocks_per_day`) |
-| `claim_daily_mission` | – | `integer` coins (0 = already claimed today, UTC) | amount now from `app_config` |
-| `simulate_purchase` | `{ p_package_id }` e.g. `'coins-250'` | new balance `integer` | adds coins + bonus, writes the transaction |
-| `simulate_subscribe` | `{ p_plan_id }` `'monthly' \| 'annual'` | `subscriptions` row | sets active + `renews_at`, grants plan bonus coins |
-| `cancel_subscription` | – | `subscriptions` row | |
-| `reset_my_data` | – | – | "Reset Prototype": clears own favorites/unlocks/history/progress/searches/transactions/daily claims, restores starting coins, ends membership |
+| `unlock_episode_with_coins` | `{ p_episode_id }` | `boolean` | `false` = not enough coins. **Members only** |
+| `redeem_ad_reward` | `{ p_episode_id }` | `boolean` | `false` = daily ad-unlock cap reached (`ad_unlocks_per_day`). **Members only** |
+| `claim_daily_mission` | – | `integer` coins (0 = already claimed today, UTC) | amount from `app_config`. **Members only** |
+| `simulate_purchase` | `{ p_package_id }` e.g. `'coins-250'` | new balance `integer` | adds coins + bonus, writes the transaction. **Members only** |
+| `simulate_subscribe` | `{ p_plan_id }` `'monthly' \| 'annual'` | `subscriptions` row | sets active + `renews_at`, clears `cancelled_at`; plan bonus coins only if no membership is running and none was paid in the last billing period (`bonus_granted_at`). **Members only** |
+| `cancel_subscription` | – | `subscriptions` row | sets `cancelled_at`; `is_active` stays true and subscriber episodes keep playing until `renews_at` |
+| `reset_my_data` | – | – | "Reset Prototype": clears own favorites/unlocks/history/progress/searches/transactions/daily claims, sets the balance to 0, ends membership (the welcome bonus is not paid again) |
 | `demo_set_balance` | `{ p_balance }` | `integer` | **admins only** (Demo Controls "+500" = current+500, "Remove all" = 0) |
 | `demo_set_all_unlocked` | `{ p_unlocked: boolean }` | – | **admins only** |
 | `can_watch` | `{ p_episode_id }` | `boolean` | optional helper; playback still goes through `playback-token` |
 
-Error messages: `not_authenticated`, `payments_disabled` (simulated payments
-switched off), `admin_only`, `episode <id> not found`, `episode <id> is not a
-coin-unlock episode`, `package <id> not found`, `plan <id> not found`.
+Error messages: `not_authenticated`, `account_required` (the caller is a
+guest — show the "link an account" gate), `payments_disabled` (simulated
+payments switched off), `admin_only`, `episode <id> not found`, `episode <id>
+is not a coin-unlock episode`, `package <id> not found`, `plan <id> not found`.
 
-Starting balance for **new guest accounts is 50 coins** (members 150) — guest
-accounts are free to create, so they get less. Read the balance from
-`wallets`; don't assume a constant.
+**Account rules** (since `20261019120000_account_rules.sql`):
+
+- **Guests have 0 coins** and can't earn or spend: the five "Members only" RPCs
+  above raise `account_required`. Guests can only **preview free episodes**:
+  15 s per token (`guest_preview_seconds`), 20 tokens per UTC day
+  (`guest_previews_per_day`) — see §3.
+- **Every new account starts with 0 coins.** The **welcome bonus** (150,
+  `welcome_bonus_coins`) is paid by the server the moment a real identity
+  (Google / WhatsApp phone / Apple / email) is attached — signing up with it,
+  or a guest linking it (`linkIdentity`, phone verify). Once per account
+  (linking Google *and* a phone pays once) and **once per identity, ever**:
+  deleting the account and signing up again with the same Google account or
+  phone number pays nothing. It shows up as a `bonus` transaction labelled
+  `Welcome bonus`; re-read `wallets` after linking.
+- On linking, `profiles.provider` becomes `google` / `phone` and a default
+  name (`Guest Viewer`) becomes the Google name (or `KBbox Member`). A name the
+  user chose is kept. Read the provider from `profiles.provider`.
+- **Membership:** the plan bonus is paid at most once per billing period.
+  Cancelling keeps access until `renews_at` (show "cancelled, ends on
+  `renews_at`" when `cancelled_at` is set); an hourly job sets `is_active =
+  false` after `renews_at`. Subscribing again while cancelled resumes it.
+- Read the balance from `wallets`; don't assume a constant.
+
+**Delete account** (store requirement), guests included:
+
+```ts
+const { error } = await supabase.functions.invoke('delete-account'); // POST, no body
+// 200 { deleted: true } → supabase.auth.signOut({ scope: 'local' }), clear local state, go to onboarding
+// 401 not_authenticated · 500 server_error
+```
+
+Everything per-user is deleted; the old access token stops working
+immediately (`playback-token` → 401). The watermark code is archived
+server-side so leaks stay traceable.
 
 ---
 
@@ -286,8 +326,9 @@ Bulk uploads of whole series are done by the backend team with
 
 ## 10. Quick self-test
 
-1. Guest sign-in → balance 50, `public_code` present.
-2. Free episode → `playback-token` 200 → HLS plays.
-3. Coin episode → 403 → unlock with coins → 200.
+1. Guest sign-in → balance 0, `public_code` present.
+2. Guest: free episode → `playback-token` 200 with `preview_seconds: 15` → plays, stops at 15 s;
+   coin episode → 403 `account_required`.
+3. Link Google / WhatsApp → balance 150 once; coin episode → 403 `not_entitled` → unlock with coins → 200.
 4. Direct `update wallets ...` from the console → permission denied.
 5. Leave a video paused > 15 min, resume → app fetches a new token and continues.

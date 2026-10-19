@@ -5,6 +5,8 @@ import { Confirm, ErrorBox, fmtDateTime, fmtNumber, Loading, Modal, useLoad, use
 
 const DECISION_LABEL: Record<string, { text: MsgKey; cls: string }> = {
   granted: { text: 'decision.granted', cls: 'green' },
+  preview: { text: 'decision.preview', cls: 'green' },
+  account_required: { text: 'decision.account_required', cls: '' },
   not_entitled: { text: 'decision.not_entitled', cls: '' },
   unavailable: { text: 'decision.unavailable', cls: '' },
   rate_limited: { text: 'decision.rate_limited', cls: 'red' },

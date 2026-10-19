@@ -35,6 +35,24 @@ app ◀── hls_url (customer-xxx.cloudflarestream.com/<token>/manifest/video.
 - No DRM: a paying user with tools can still save an episode they are entitled to while its token
   is valid. The layers above make bulk scraping hard and leaks traceable.
 
+## User rules
+
+Since `20261019120000_account_rules.sql` (details for the app: `docs/frontend-api.md` §3/§5):
+
+- **Guests** (anonymous sessions) have 0 coins and can only preview **free** episodes —
+  `guest_preview_seconds` (15) per token, `guest_previews_per_day` (20) per UTC day. Coin / ad
+  unlocks, the daily mission and (simulated) purchases / memberships raise `account_required`.
+- **Every account starts with 0 coins.** The welcome bonus (`welcome_bonus_coins`, 150) is paid by
+  a trigger on `auth.identities` when Google / phone / Apple / email is attached (sign-up or a
+  guest linking it): once per account and once per identity ever
+  (`private.welcome_bonus_grants`, which survives account deletion). Accounts that existed
+  before the migration are marked as already paid.
+- Profiles follow the link: `provider` from Supabase, the Google name replaces a default name.
+- **Membership:** the plan bonus is paid at most once per billing period; cancelling keeps access
+  until `renews_at`; the `keybox-expire-subscriptions` cron job switches expired rows off hourly.
+- **Account deletion:** the `delete-account` Edge Function archives the watermark code in
+  `private.deleted_accounts`, then deletes the auth user (everything per-user cascades).
+
 ## What's here
 
 ```
@@ -50,9 +68,14 @@ supabase/
     20261009170000_playback_guard.sql  authorize_playback, playback_events, abuse_flags,
                                         stream_usage_daily, cost guard
     20261009180000_scheduled_jobs.sql  pg_cron: hourly usage sync, daily log pruning
+    …
+    20261019120000_account_rules.sql   0 starting coins, welcome bonus per identity, guest
+                                        previews / account_required, membership bonus once
+                                        per period + expiry job, deleted-account archive
   functions/
     _shared/                           http helpers, Stream API client, token signing, webhook HMAC
     playback-token/                    the only source of playable URLs
+    delete-account/                    the caller deletes their own account (guests too)
     admin-video-upload/                one-time Cloudflare upload URL for an episode (admins)
     admin-video-delete/                remove videos from Cloudflare + DB (admins)
     stream-webhook/                    Cloudflare "video ready/error" callback (HMAC-verified)
@@ -163,7 +186,10 @@ All knobs are rows in `public.app_config` (change with SQL, takes effect immedia
 | key | default | |
 |---|---|---|
 | `simulated_payments` | `true` | turn **off** before launch (disables `simulate_*`, `reset_my_data`, `demo_*`) |
-| `starting_coins_guest` / `_member` | 50 / 150 | |
+| `starting_coins_guest` / `_member` | 0 / 0 | no longer read — every account starts with 0 coins |
+| `welcome_bonus_coins` | 150 | paid once per account / per identity when Google, phone, Apple or email is attached |
+| `guest_preview_seconds` | 15 | guest preview length (token lives this + 15 s) |
+| `guest_previews_per_day` | 20 | guest preview tokens per UTC day; then `account_required` |
 | `daily_mission_reward` | 20 | |
 | `ad_unlocks_per_day` | 20 | until ads are verified server-side |
 | `playback_token_ttl_seconds` | 900 | |

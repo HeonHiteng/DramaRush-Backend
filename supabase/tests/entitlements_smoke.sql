@@ -1,4 +1,7 @@
--- Smoke test for 20261009150000_lock_down_entitlements.sql.
+-- Smoke test for 20261009150000_lock_down_entitlements.sql (rules as
+-- updated by 20261019120000_account_rules.sql: 0 starting coins, the welcome
+-- bonus arrives with an identity, guests can't earn or spend, cancelling keeps
+-- the membership until renews_at).
 --
 -- Run it as the postgres role (Supabase SQL Editor, or the MCP execute_sql
 -- tool). Everything happens inside one DO block that ALWAYS ends by raising
@@ -22,10 +25,17 @@ begin
     (u_member, 'authenticated', 'authenticated', 'member@test.keybox.invalid', false, '{}', '{}', now(), now()),
     (u_admin, 'authenticated', 'authenticated', 'admin@test.keybox.invalid', false, '{}', '{}', now(), now());
   update public.profiles set is_admin = true where user_id = u_admin;
+  update public.app_config set value = '150' where key = 'welcome_bonus_coins';
 
   -- ------------------------------------------------------- signup trigger
-  assert (select balance from public.wallets where user_id = u_guest) = 50, 'guest starting coins should be 50';
-  assert (select balance from public.wallets where user_id = u_member) = 150, 'member starting coins should be 150';
+  assert (select balance from public.wallets where user_id = u_guest) = 0, 'guest starting coins should be 0';
+  assert (select balance from public.wallets where user_id = u_member) = 0, 'member starting coins should be 0 (bonus comes with the identity)';
+
+  -- GoTrue writes the email identity right after the user row: welcome bonus.
+  insert into auth.identities (id, user_id, provider, provider_id, identity_data, last_sign_in_at, created_at, updated_at)
+  values (gen_random_uuid(), u_member, 'email', u_member::text,
+          jsonb_build_object('sub', u_member::text, 'email', 'member@test.keybox.invalid'), now(), now(), now());
+  assert (select balance from public.wallets where user_id = u_member) = 150, 'member welcome bonus should be 150';
   assert (select display_name from public.profiles where user_id = u_member) = 'KBbox Member', 'default member name';
   assert (select public_code from public.profiles where user_id = u_guest) ~ '^[2-9A-HJ-NP-Z]{7}$', 'public_code format';
 
@@ -105,9 +115,10 @@ begin
 
   -- cancel + reset
   perform public.cancel_subscription();
-  assert not public.can_watch('crimson-contract-ep7'), 'cancelled membership loses subscriber episodes';
+  assert public.can_watch('crimson-contract-ep7'), 'cancelled membership keeps subscriber episodes until renews_at';
   perform public.reset_my_data();
-  assert (select balance from public.wallets where user_id = u_member) = 150, 'reset restores member starting coins';
+  assert (select balance from public.wallets where user_id = u_member) = 0, 'reset sets the balance to 0';
+  assert not public.can_watch('crimson-contract-ep7'), 'reset ends the membership';
   assert (select count(*) from public.unlocks where user_id = u_member) = 0, 'reset clears unlocks';
 
   -- -------------------------------------------------------- act as anon
@@ -139,7 +150,20 @@ begin
   update public.app_config set value = '1' where key = 'ad_unlocks_per_day';
   update public.app_config set value = 'false' where key = 'simulated_payments';
 
+  -- Guests can't use rewards at all.
   perform set_config('request.jwt.claims', json_build_object('sub', u_guest, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  begin
+    perform public.redeem_ad_reward('heir-to-nowhere-ep4');
+    raise exception 'FAIL: guest could redeem an ad reward';
+  exception when raise_exception then
+    get stacked diagnostics v_text = message_text;
+    if v_text <> 'account_required' then raise; end if;
+  end;
+  reset role;
+
+  -- The member's ad unlocks were cleared by reset_my_data above.
+  perform set_config('request.jwt.claims', json_build_object('sub', u_member, 'role', 'authenticated')::text, true);
   set local role authenticated;
 
   assert public.redeem_ad_reward('heir-to-nowhere-ep4'), 'first ad unlock today allowed';

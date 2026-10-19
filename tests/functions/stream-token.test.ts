@@ -51,13 +51,13 @@ test("signs a verifiable RS256 token with the expected claims", async () => {
   assert.match(token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, "base64url, no padding");
 });
 
-test("clamps ttl to Cloudflare's 24h maximum and a 60s minimum", async () => {
+test("clamps ttl to Cloudflare's 24h maximum and a 20s minimum", async () => {
   const { key } = await makeKey();
   const now = 1_800_000_000_000;
   const long = await signStreamToken({ uid: UID, key, ttlSeconds: 999_999, now: () => now });
   assert.equal(long.expiresAt, now / 1000 + 24 * 3600);
   const short = await signStreamToken({ uid: UID, key, ttlSeconds: 1, now: () => now });
-  assert.equal(short.expiresAt, now / 1000 + 60);
+  assert.equal(short.expiresAt, now / 1000 + 20);
 });
 
 test("adds country allow + block-all rules when countries are configured", async () => {
