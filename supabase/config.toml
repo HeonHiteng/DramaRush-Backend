@@ -45,10 +45,13 @@ enabled = false
 client_id = ""
 secret = ""
 
-# Edge Functions. playback-token / admin-video-* require a signed-in caller.
+# Edge Functions. playback-token / delete-account / admin-video-* require a signed-in caller.
 # stream-webhook is authenticated by Cloudflare's HMAC signature and
 # stream-usage-sync by the Vault cron secret, so they skip JWT verification.
 [functions.playback-token]
+verify_jwt = true
+
+[functions.delete-account]
 verify_jwt = true
 
 [functions.admin-video-upload]
