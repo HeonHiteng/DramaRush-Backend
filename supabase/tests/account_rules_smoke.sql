@@ -1,4 +1,6 @@
--- Smoke test for 20261019120000_account_rules.sql. Run as postgres; always
+-- Smoke test for 20261019120000_account_rules.sql, with the guest playback
+-- rule of 20261020120000_device_guests.sql (guests watch free episodes in
+-- full and may unlock ad episodes; no previews). Run as postgres; always
 -- ends in an exception so everything rolls back. Success = "ALL_TESTS_PASSED".
 --
 -- GoTrue's order of writes when a guest links an identity is not documented,
@@ -6,7 +8,7 @@
 -- (order A), and the reverse (order B).
 do $$
 declare
-  g_guest uuid := gen_random_uuid();    -- stays a guest: previews + account_required
+  g_guest uuid := gen_random_uuid();    -- stays a guest: free / ad episodes, account_required otherwise
   g_link_a uuid := gen_random_uuid();   -- guest links Google, identity row first
   g_link_b uuid := gen_random_uuid();   -- guest links Google, is_anonymous flips first
   g_renamed uuid := gen_random_uuid();  -- guest renamed themselves, then links Google
@@ -26,13 +28,14 @@ declare
 begin
   -- Known config, whatever the live values are (rolled back at the end).
   update public.app_config set value = '150' where key = 'welcome_bonus_coins';
-  update public.app_config set value = '15' where key = 'guest_preview_seconds';
-  update public.app_config set value = '20' where key = 'guest_previews_per_day';
+  update public.app_config set value = '20' where key = 'ad_unlocks_per_day';
   update public.app_config set value = '0' where key = 'daily_minutes_budget';
   update public.app_config set value = '60' where key = 'playback_max_tokens_per_10min';
   update public.app_config set value = '80' where key = 'playback_max_episodes_per_hour';
   update public.app_config set value = 'true' where key = 'simulated_payments';
-  update public.episodes set published = true where id in ('crimson-contract-ep1', 'crimson-contract-ep4', 'crimson-contract-ep7');
+  update public.episodes set published = true where id in ('crimson-contract-ep1', 'crimson-contract-ep3', 'crimson-contract-ep4', 'crimson-contract-ep7');
+  assert not exists (select 1 from public.app_config where key in ('guest_preview_seconds', 'guest_previews_per_day')),
+    'preview settings removed';
 
   -- ------------------------------------------------- guests start with 0
   insert into auth.users (id, aud, role, raw_app_meta_data, raw_user_meta_data, is_anonymous, created_at, updated_at)
@@ -156,13 +159,12 @@ begin
   values (gen_random_uuid(), u_p2, 'phone', u_p2::text, jsonb_build_object('sub', u_p2::text, 'phone', '+60 10-000 0033'), now(), now(), now());
   assert (select balance from public.wallets where user_id = u_p2) = 0, 'same phone number on a new account gives nothing';
 
-  -- ------------------------------- guests: every earning/spending RPC refused
+  -- ------------------------------- guests: every coin / membership RPC refused
   perform set_config('request.jwt.claims', json_build_object('sub', g_guest, 'role', 'authenticated')::text, true);
   set local role authenticated;
 
   foreach v_sql in array array[
     'select public.unlock_episode_with_coins(''crimson-contract-ep4'')',
-    'select public.redeem_ad_reward(''crimson-contract-ep3'')',
     'select public.claim_daily_mission()',
     'select public.simulate_purchase(''coins-100'')',
     'select public.simulate_subscribe(''monthly'')'
@@ -178,37 +180,57 @@ begin
   reset role;
   assert (select balance from public.wallets where user_id = g_guest) = 0, 'guest still has 0 coins';
 
-  -- ------------------------------- guest previews (service role, like playback-token)
+  -- ------------------------------- guest playback (service role, like playback-token)
   insert into public.video_assets (episode_id, provider_uid, status, duration_sec, ready_at) values
     ('crimson-contract-ep1', md5(gen_random_uuid()::text), 'ready', 90, now()),
+    ('crimson-contract-ep3', md5(gen_random_uuid()::text), 'ready', 95, now()),
     ('crimson-contract-ep4', md5(gen_random_uuid()::text), 'ready', 100, now());
   set local role service_role;
 
   v_res := public.authorize_playback(g_guest, 'crimson-contract-ep1', null, null);
   assert (v_res ->> 'allowed')::boolean, format('guest free episode allowed: %s', v_res);
-  assert (v_res ->> 'preview_seconds')::integer = 15, 'preview_seconds from app_config';
-  assert (v_res ->> 'ttl_seconds')::integer = 30, 'guest token lives preview_seconds + 15';
+  assert not (v_res ? 'preview_seconds'), 'guest free episode is a full token, not a preview';
+  assert (v_res ->> 'ttl_seconds')::integer = coalesce((select (value #>> '{}')::integer from public.app_config where key = 'playback_token_ttl_seconds'), 900),
+    'guest ttl = playback_token_ttl_seconds';
 
   v_res := public.authorize_playback(g_guest, 'crimson-contract-ep4', null, null);
-  assert v_res ->> 'reason' = 'account_required', 'guest paid episode -> account_required';
+  assert v_res ->> 'reason' = 'account_required', format('guest coin episode -> account_required: %s', v_res);
+  v_res := public.authorize_playback(g_guest, 'crimson-contract-ep7', null, null);
+  assert v_res ->> 'reason' = 'account_required', format('guest subscriber episode -> account_required: %s', v_res);
+  v_res := public.authorize_playback(g_guest, 'crimson-contract-ep3', null, null);
+  assert v_res ->> 'reason' = 'not_entitled', format('guest ad episode not unlocked -> not_entitled: %s', v_res);
 
-  for i in 2..20 loop
+  -- No daily cap on free episodes any more.
+  for i in 2..21 loop
     v_res := public.authorize_playback(g_guest, 'crimson-contract-ep1', null, null);
-    assert (v_res ->> 'allowed')::boolean, format('preview %s of 20 allowed', i);
+    assert (v_res ->> 'allowed')::boolean, format('free token %s allowed', i);
   end loop;
-  v_res := public.authorize_playback(g_guest, 'crimson-contract-ep1', null, null);
-  assert v_res ->> 'reason' = 'account_required', '21st preview today -> account_required';
+  reset role;
+
+  -- Guests may unlock ad episodes, then watch them.
+  perform set_config('request.jwt.claims', json_build_object('sub', g_guest, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  assert public.redeem_ad_reward('crimson-contract-ep3'), 'guest redeem_ad_reward -> true';
+  reset role;
+  set local role service_role;
+  v_res := public.authorize_playback(g_guest, 'crimson-contract-ep3', null, null);
+  assert (v_res ->> 'allowed')::boolean and not (v_res ? 'preview_seconds'), format('guest ad-unlocked episode -> granted: %s', v_res);
 
   -- Members get normal tokens.
   v_res := public.authorize_playback(u_member, 'crimson-contract-ep1', null, null);
-  assert (v_res ->> 'allowed')::boolean and not (v_res ? 'preview_seconds'), 'member token is not a preview';
+  assert (v_res ->> 'allowed')::boolean and not (v_res ? 'preview_seconds'), 'member token';
   assert (v_res ->> 'ttl_seconds')::integer = coalesce((select (value #>> '{}')::integer from public.app_config where key = 'playback_token_ttl_seconds'), 900), 'member ttl unchanged';
   reset role;
 
+  assert (select balance from public.wallets where user_id = g_guest) = 0, 'ad unlock pays the guest no coins';
   select count(*) into v_int from public.playback_events where user_id = g_guest and decision = 'preview';
-  assert v_int = 20, format('20 previews logged (got %s)', v_int);
+  assert v_int = 0, format('no previews logged (got %s)', v_int);
+  select count(*) into v_int from public.playback_events where user_id = g_guest and decision = 'granted';
+  assert v_int = 22, format('22 granted logged (got %s)', v_int);
   select count(*) into v_int from public.playback_events where user_id = g_guest and decision = 'account_required';
   assert v_int = 2, format('2 account_required logged (got %s)', v_int);
+  select count(*) into v_int from public.playback_events where user_id = g_guest and decision = 'not_entitled';
+  assert v_int = 1, format('1 not_entitled logged (got %s)', v_int);
 
   -- ------------------------------- membership bonus once per period
   perform set_config('request.jwt.claims', json_build_object('sub', u_member, 'role', 'authenticated')::text, true);
@@ -277,17 +299,24 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', u_google, 'role', 'authenticated')::text, true);
   set local role authenticated;
   perform public.admin_set_config('welcome_bonus_coins', '200'::jsonb);
-  perform public.admin_set_config('guest_preview_seconds', '30'::jsonb);
-  perform public.admin_set_config('guest_previews_per_day', '0'::jsonb);
+  foreach v_sql in array array['guest_preview_seconds', 'guest_previews_per_day'] loop
+    begin
+      perform public.admin_set_config(v_sql, '30'::jsonb);
+      raise exception 'FAIL: removed setting % accepted', v_sql;
+    exception when raise_exception then
+      get stacked diagnostics v_text = message_text;
+      if v_text not like 'unknown_setting%' then raise; end if;
+    end;
+  end loop;
   begin
-    perform public.admin_set_config('guest_preview_seconds', '2'::jsonb);
-    raise exception 'FAIL: preview below 5 s accepted';
+    perform public.admin_set_config('welcome_bonus_coins', '-1'::jsonb);
+    raise exception 'FAIL: negative welcome bonus accepted';
   exception when raise_exception then
     get stacked diagnostics v_text = message_text;
     if v_text not like 'invalid_value%' then raise; end if;
   end;
   reset role;
-  assert (select value from public.app_config where key = 'guest_preview_seconds') = '30'::jsonb, 'admin setting saved';
+  assert (select value from public.app_config where key = 'welcome_bonus_coins') = '200'::jsonb, 'admin setting saved';
 
   raise exception 'ALL_TESTS_PASSED';
 end;

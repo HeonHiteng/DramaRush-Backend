@@ -16,17 +16,23 @@ this repo only; the app (`../DramaRush`, Expo) belongs to the app team — chang
   `apply_migration`, afterwards `update supabase_migrations.schema_migrations set version =
   '<file timestamp>' where name = '<name>'` so the CLI stays in sync.
 - Edge Functions deployed: playback-token, delete-account, admin-video-upload, admin-video-delete (verify_jwt on);
-  stream-webhook, stream-usage-sync (verify_jwt off — HMAC / Vault secret instead).
+  stream-webhook, stream-usage-sync (verify_jwt off — HMAC / Vault secret instead); guest-session
+  (verify_jwt off — device key + per-IP cap; see 20261020120000_device_guests.sql).
+- The `GUEST_DEVICE_SECRET` function secret must be set before deploying guest-session, and never
+  changed afterwards (every device guest's hash and password derive from it).
 - Cloudflare Stream secrets are set with `scripts/cloudflare-setup.js` (see README); until they
   are, playback-token returns 500 after authorization and the webhook returns 503.
 
-## User rules (`20261019120000_account_rules.sql`; details in README / `docs/frontend-api.md` §3, §5)
+## User rules (`20261019120000_account_rules.sql`, `20261020120000_device_guests.sql`; details in README / `docs/frontend-api.md` §2, §3, §5)
 
-- Guests: 0 coins; only 15 s previews of free episodes, 20 per UTC day (`guest_preview_seconds`,
-  `guest_previews_per_day`); otherwise playback-token 403 `account_required`.
+- Guest = `private.is_guest(uid)`: anonymous OR `profiles.provider = 'guest'` (device guests from
+  guest-session: email accounts at `@guest.kbbox.app`, one per device, never an identity for the
+  welcome bonus). Never test `is_anonymous` alone.
+- Guests: 0 coins; free episodes in full, ad episodes after `redeem_ad_reward` (guests allowed,
+  same daily cap); coin / subscriber episodes → playback-token 403 `account_required`.
 - Welcome bonus 150 (`welcome_bonus_coins`) when Google / phone / Apple / email is attached: once
   per account, once per identity ever (`private.welcome_bonus_grants`, survives deletion).
-- Coin / ad unlock, daily mission, `simulate_purchase` / `simulate_subscribe` raise
+- Coin unlock, daily mission, `simulate_purchase` / `simulate_subscribe` raise
   `account_required` for guests.
 - Plan bonus once per billing period; cancel keeps access until `renews_at`; cron
   `keybox-expire-subscriptions` switches expired rows off hourly.

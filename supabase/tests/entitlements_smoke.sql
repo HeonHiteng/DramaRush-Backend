@@ -1,7 +1,8 @@
 -- Smoke test for 20261009150000_lock_down_entitlements.sql (rules as
--- updated by 20261019120000_account_rules.sql: 0 starting coins, the welcome
--- bonus arrives with an identity, guests can't earn or spend, cancelling keeps
--- the membership until renews_at).
+-- updated by 20261019120000_account_rules.sql and 20261020120000_device_guests.sql:
+-- 0 starting coins, the welcome bonus arrives with an identity, guests can't
+-- earn or spend coins but may unlock ad episodes, cancelling keeps the
+-- membership until renews_at).
 --
 -- Run it as the postgres role (Supabase SQL Editor, or the MCP execute_sql
 -- tool). Everything happens inside one DO block that ALWAYS ends by raising
@@ -150,17 +151,14 @@ begin
   update public.app_config set value = '1' where key = 'ad_unlocks_per_day';
   update public.app_config set value = 'false' where key = 'simulated_payments';
 
-  -- Guests can't use rewards at all.
+  -- Guests may unlock ad episodes (same daily cap as members).
   perform set_config('request.jwt.claims', json_build_object('sub', u_guest, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  begin
-    perform public.redeem_ad_reward('heir-to-nowhere-ep4');
-    raise exception 'FAIL: guest could redeem an ad reward';
-  exception when raise_exception then
-    get stacked diagnostics v_text = message_text;
-    if v_text <> 'account_required' then raise; end if;
-  end;
+  assert public.redeem_ad_reward('heir-to-nowhere-ep4'), 'guest CAN redeem an ad reward';
+  assert not public.redeem_ad_reward('midnight-ledger-ep5'), 'guest ad unlock beyond daily cap refused';
   reset role;
+  assert exists (select 1 from public.unlocks where user_id = u_guest and episode_id = 'heir-to-nowhere-ep4'), 'guest ad unlock recorded';
+  assert (select balance from public.wallets where user_id = u_guest) = 0, 'ad unlock pays the guest no coins';
 
   -- The member's ad unlocks were cleared by reset_my_data above.
   perform set_config('request.jwt.claims', json_build_object('sub', u_member, 'role', 'authenticated')::text, true);

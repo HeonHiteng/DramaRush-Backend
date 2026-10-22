@@ -65,3 +65,10 @@ verify_jwt = false
 
 [functions.stream-usage-sync]
 verify_jwt = false
+
+# guest-session signs a device in as its guest account. There is no caller JWT
+# yet at that point: it is authenticated by the device key (HMAC with the
+# GUEST_DEVICE_SECRET function secret) and capped per IP per day
+# (guest_new_per_ip_per_day); Turnstile to follow.
+[functions.guest-session]
+verify_jwt = false

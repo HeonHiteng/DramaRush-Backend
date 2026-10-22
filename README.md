@@ -37,11 +37,22 @@ app ◀── hls_url (customer-xxx.cloudflarestream.com/<token>/manifest/video.
 
 ## User rules
 
-Since `20261019120000_account_rules.sql` (details for the app: `docs/frontend-api.md` §3/§5):
+Since `20261019120000_account_rules.sql` and `20261020120000_device_guests.sql` (details for the
+app: `docs/frontend-api.md` §2/§3/§5):
 
-- **Guests** (anonymous sessions) have 0 coins and can only preview **free** episodes —
-  `guest_preview_seconds` (15) per token, `guest_previews_per_day` (20) per UTC day. Coin / ad
-  unlocks, the daily mission and (simulated) purchases / memberships raise `account_required`.
+- **Guests** — `private.is_guest()`: anonymous sessions *and* device guests — have 0 coins, watch
+  **free** episodes in full and may **unlock ad episodes** (`redeem_ad_reward`, same daily cap).
+  Coin / subscriber episodes give playback-token 403 `account_required`; coin unlocks, the daily
+  mission and (simulated) purchases / memberships raise `account_required`.
+- **One guest per phone.** The app signs guests in through the `guest-session` Edge Function with a
+  stable device key. The function keeps one guest account per device (`private.device_guests`,
+  keyed by HMAC(`GUEST_DEVICE_SECRET`, key)): an email account with a synthetic
+  `d-…@guest.kbbox.app` address, a server-derived password and profile provider `guest`, so a
+  reinstall signs back into the same guest. At most `guest_new_per_ip_per_day` (20) new device
+  guests per IP per UTC day (429 `guest_limit`). The synthetic address never counts as an
+  identity (no welcome bonus). Once the guest links Google / a phone it is a member like any other
+  and the device gets a fresh guest next time it needs one. `signInAnonymously` stays the app's
+  fallback.
 - **Every account starts with 0 coins.** The welcome bonus (`welcome_bonus_coins`, 150) is paid by
   a trigger on `auth.identities` when Google / phone / Apple / email is attached (sign-up or a
   guest linking it): once per account and once per identity ever
@@ -70,12 +81,16 @@ supabase/
     20261009180000_scheduled_jobs.sql  pg_cron: hourly usage sync, daily log pruning
     …
     20261019120000_account_rules.sql   0 starting coins, welcome bonus per identity, guest
-                                        previews / account_required, membership bonus once
+                                        account_required, membership bonus once
                                         per period + expiry job, deleted-account archive
+    20261020120000_device_guests.sql   one guest account per device (guest-session),
+                                        private.is_guest() = anonymous or provider 'guest',
+                                        guests: free + ad episodes in full
   functions/
     _shared/                           http helpers, Stream API client, token signing, webhook HMAC
     playback-token/                    the only source of playable URLs
     delete-account/                    the caller deletes their own account (guests too)
+    guest-session/                     device key → the device's guest session (no JWT; per-IP cap)
     admin-video-upload/                one-time Cloudflare upload URL for an episode (admins)
     admin-video-delete/                remove videos from Cloudflare + DB (admins)
     stream-webhook/                    Cloudflare "video ready/error" callback (HMAC-verified)
@@ -108,6 +123,10 @@ docs/frontend-api.md                   what the app must call / change
    npx supabase secrets set --env-file scripts/.secrets/function-secrets.env --project-ref <ref>
    ```
    Optional: `--countries MY,SG` (token geo-restriction), `--origins keybox.app,*.keybox.app`.
+   Plus `GUEST_DEVICE_SECRET` for `guest-session` (a long random string, e.g.
+   `openssl rand -base64 48`; set it once and never change it — every device guest's hash and
+   password derive from it, so a new value strands every existing device guest):
+   `npx supabase secrets set GUEST_DEVICE_SECRET=… --project-ref <ref>`.
 6. **Functions.** Deploy everything in `supabase/functions/` (`supabase functions deploy`, or the
    MCP). `config.toml` sets which ones skip JWT verification.
 7. **Cron.** Set `app_config.functions_base_url` to `https://<ref>.supabase.co/functions/v1`
@@ -188,8 +207,7 @@ All knobs are rows in `public.app_config` (change with SQL, takes effect immedia
 | `simulated_payments` | `true` | turn **off** before launch (disables `simulate_*`, `reset_my_data`, `demo_*`) |
 | `starting_coins_guest` / `_member` | 0 / 0 | no longer read — every account starts with 0 coins |
 | `welcome_bonus_coins` | 150 | paid once per account / per identity when Google, phone, Apple or email is attached |
-| `guest_preview_seconds` | 15 | guest preview length (token lives this + 15 s) |
-| `guest_previews_per_day` | 20 | guest preview tokens per UTC day; then `account_required` |
+| `guest_new_per_ip_per_day` | 20 | new device guests (`guest-session`) per client IP per UTC day; then 429 `guest_limit` (not public) |
 | `daily_mission_reward` | 20 | |
 | `ad_unlocks_per_day` | 20 | until ads are verified server-side |
 | `playback_token_ttl_seconds` | 900 | |
@@ -216,7 +234,7 @@ SQL smoke tests: run `supabase/tests/*.sql` as `postgres` (SQL Editor / MCP). Ea
 
 - Real App Store / Google Play billing (RevenueCat webhook) — purchases are simulated server-side.
 - Server-side ad verification (AdMob SSV) for `redeem_ad_reward` / daily mission.
-- Cloudflare Turnstile captcha on anonymous sign-in (needs app support).
+- Cloudflare Turnstile captcha on guest sign-in (`guest-session` + anonymous; needs app support).
 - Dropping `episodes.video_uri` and the old public `episode-videos` bucket once the app has
   switched to `playback-token`.
 - Native Apple Sign In; Google OAuth on the new project.
