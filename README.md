@@ -100,6 +100,7 @@ scripts/
   cloudflare-setup.js                  one-time: signing key, watermark, webhook, secrets file
   upload-series.js                     bulk upload a folder of episodes (resumable)
   add-poster.js                        upload a series poster (public bucket)
+  import-posters.py                    bulk import posters from Google Drive (posters.manifest.json)
   backfill-video-dimensions.js         one-off: picture size for videos uploaded before 2026-10-12
 tests/                                 unit tests (node --test)
 docs/frontend-api.md                   what the app must call / change
@@ -197,6 +198,18 @@ project's 54 seed episodes have them. Real uploads replace them automatically.
 
 **New series:** insert into `public.series` (admin UI or SQL; see the seed for column shapes).
 Posters: `npm run add-poster -- --series <id> --file poster.jpg`.
+
+**Importing posters** from Google Drive (print masters, JPEG/PNG or PDF):
+`npm run import-posters -- --work-dir "D:/tmp/kbbox-posters"` (Python 3 + Pillow + PyMuPDF).
+Each row of `scripts/posters.manifest.json` (`id`, `title`, public Drive `driveId`, `type`
+`image`|`pdf`) is downloaded into the work dir (must be outside the repo; cached by size),
+rendered (PDF page 1), resized to 1350 px on the long side as a progressive JPEG ≤ 400 KB in
+`<work-dir>/out/`, uploaded to `series-posters/<id>.jpg` and written to `poster_image_uri`
+(`?v=<timestamp>` cache-buster). Missing series are inserted with the manifest `defaults`
+(synopsis "Coming soon.", `ms`, `is_new`) and gradient colours taken from the poster; existing
+rows only get the new poster URL (colours only if untouched since the last import). Re-runs skip
+posters that are already live (`--force` re-uploads); `--dry-run` writes nothing remote;
+`--only <id>` limits to one series.
 
 ## Operating it
 

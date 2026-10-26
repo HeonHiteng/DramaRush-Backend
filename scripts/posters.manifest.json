@@ -1,0 +1,22 @@
+{
+  "bucket": "series-posters",
+  "defaults": {
+    "synopsis": "Coming soon.",
+    "genres": [],
+    "rating": 0.0,
+    "status": "ongoing",
+    "language": "ms",
+    "cast_members": [],
+    "popularity": 0,
+    "is_new": true
+  },
+  "posters": [
+    { "id": "tiket-sehala", "title": "Tiket Sehala", "driveId": "1mJaedNC96e9WSez7PZY8eu2b6ga6MnxW", "type": "image" },
+    { "id": "the-keris", "title": "The Keris", "driveId": "1fVSYzF6pPX727WdziELgWMuf-Ip4qYi5", "type": "pdf" },
+    { "id": "tarung-unforgiven", "title": "Tarung Unforgiven", "driveId": "1IBxiBWe3wi_XQGJXdpdFfpOVmGfseOzl", "type": "pdf" },
+    { "id": "kata-hati", "title": "Kata Hati", "driveId": "1q3DUOLw8z6YBxAqNnBVDyE-YRc_BhsXX", "type": "image" },
+    { "id": "gayong-2", "title": "Gayong 2", "driveId": "1__F3zkM3MZ6MSlOl_86AldGa3M2e95td", "type": "image" },
+    { "id": "bisikan-nafsu", "title": "Bisikan Nafsu", "driveId": "1OdlnrNJyDRJyr2eU58TZ0Pu75Nmzg8O-", "type": "image" },
+    { "id": "kacau", "title": "Kacau", "driveId": "1iJN14hygJaWX-Vh94rIuWr4aGkWG0c-0", "type": "image" }
+  ]
+}
