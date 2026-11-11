@@ -6,7 +6,7 @@ import { Modal } from '../ui';
 
 /** Same lists the app filters by (DramaRush/src/types/content.ts). */
 export const GENRES = [
-  'Malay Movies',
+  'Malaysia Movies',
   'Chinese Dramas',
   'Korean Dramas',
   'Movie Highlights',
