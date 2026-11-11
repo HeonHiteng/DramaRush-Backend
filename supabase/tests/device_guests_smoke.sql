@@ -43,6 +43,8 @@ begin
   update public.app_config set value = 'true' where key = 'simulated_payments';
   update public.app_config set value = '20' where key = 'daily_mission_reward';
   update public.episodes set published = true where id in ('crimson-contract-ep1', 'crimson-contract-ep3', 'crimson-contract-ep4');
+  -- Demo series are taken down live (20261111120000_series_published.sql); publish them for this test (rolled back).
+  update public.series set published = true where id in ('crimson-contract');
 
   assert exists (select 1 from public.app_config where key = 'guest_new_per_ip_per_day' and value = '20'::jsonb and not is_public),
     'guest_new_per_ip_per_day = 20, not public';

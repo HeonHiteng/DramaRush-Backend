@@ -44,6 +44,7 @@ function Overview({ d, softRatio }: { d: Awaited<ReturnType<typeof api.dashboard
         <div className="stat">
           <div className="label">{t('dash.series')}</div>
           <div className="value">{fmtNumber(d.series)}</div>
+          {d.series_published != null && <div className="sub">{t('dash.seriesPublished', { published: fmtNumber(d.series_published) })}</div>}
           <div className="sub">{t('dash.publishedOf', { published: fmtNumber(d.episodes_published), total: fmtNumber(d.episodes_total) })}</div>
         </div>
         <div className="stat accent">

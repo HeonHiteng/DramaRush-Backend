@@ -26,6 +26,8 @@ begin
     (u_member, 'authenticated', 'authenticated', 'member@test.keybox.invalid', false, '{}', '{}', now(), now()),
     (u_admin, 'authenticated', 'authenticated', 'admin@test.keybox.invalid', false, '{}', '{}', now(), now());
   update public.profiles set is_admin = true where user_id = u_admin;
+  -- Demo series are taken down live (20261111120000_series_published.sql); publish them for this test (rolled back).
+  update public.series set published = true where id in ('crimson-contract', 'heir-to-nowhere', 'midnight-ledger');
   update public.app_config set value = '150' where key = 'welcome_bonus_coins';
 
   -- ------------------------------------------------------- signup trigger

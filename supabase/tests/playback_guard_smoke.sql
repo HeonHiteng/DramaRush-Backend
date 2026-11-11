@@ -8,6 +8,7 @@ declare
   u_admin uuid := gen_random_uuid();
   v_res jsonb;
   v_int integer;
+  v_assets_before integer;
   i integer;
 begin
   -- ----------------------------------------------------------------- setup
@@ -17,6 +18,14 @@ begin
     (u_other, 'authenticated', 'authenticated', 'other@test.keybox.invalid', false, '{}', '{}', now(), now()),
     (u_admin, 'authenticated', 'authenticated', 'admin@test.keybox.invalid', false, '{}', '{}', now(), now());
   update public.profiles set is_admin = true where user_id = u_admin;
+  -- Demo series are taken down live (20261111120000_series_published.sql); publish them for this test (rolled back).
+  update public.series set published = true where id in ('crimson-contract');
+
+  -- The live table also holds the demo videos (seed-demo-videos). Drop crimson-contract's own
+  -- (rolled back with everything else) so the fixtures below are the only ones for this series,
+  -- and count the rest relative to what is there.
+  delete from public.video_assets where episode_id like 'crimson-contract-%';
+  select count(*) into v_assets_before from public.video_assets;
 
   -- ep1 free, ep3 ad_unlock, ep4 coin have ready videos; ep2 (free) has none.
   insert into public.video_assets (episode_id, provider_uid, status, duration_sec, ready_at) values
@@ -42,7 +51,7 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
   set local role authenticated;
   select count(*) into v_int from public.video_assets;
-  assert v_int = 4, 'admin sees all video assets';
+  assert v_int = v_assets_before + 4, 'admin sees all video assets';
 
   -- unpublished episodes are hidden from anon/users but not admins
   reset role;

@@ -23,6 +23,7 @@ const BLANK: Series = {
   cast_members: [],
   popularity: 50,
   is_new: true,
+  published: true,
   poster_image_uri: null,
 };
 
@@ -199,6 +200,10 @@ export function SeriesForm({ initial, onClose, onSaved }: { initial?: Series; on
             <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <input type="checkbox" checked={s.is_new} onChange={(e) => set('is_new', e.target.checked)} />
               <span style={{ color: 'var(--text-2)', fontSize: 13 }}>{t('form.isNew')}</span>
+            </label>
+            <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <input type="checkbox" checked={s.published} onChange={(e) => set('published', e.target.checked)} />
+              <span style={{ color: 'var(--text-2)', fontSize: 13 }}>{t('form.published')}</span>
             </label>
           </div>
         </div>

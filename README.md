@@ -145,7 +145,8 @@ A desktop web app for the content team (Vite + React). English by default; the *
 All UI text lives in `admin/src/lib/i18n.tsx`; a test fails if Chinese is hard-coded anywhere else.
 
 - **总览** — series/episodes/videos, storage minutes, today's delivered minutes vs budget, open abuse flags.
-- **剧集与上传** — create/edit series (poster upload), and per series: **bulk upload** (drop a folder of
+- **剧集与上传** — create/edit series (poster upload, **Published** toggle: unticked = taken down / 已下架,
+  hidden from the app with all its episodes, badge in the list; `20261111120000_series_published.sql`), and per series: **bulk upload** (drop a folder of
   `ep01.mp4…`, set the paywall rule — first N free, listed episodes ad-unlock, rest coins or members —
   then 2 resumable tus uploads at a time with progress; auto-publish when Cloudflare finishes),
   episode table (publish toggle, edit title/paywall, replace or upload a video, delete).

@@ -75,6 +75,7 @@ const en = {
   'dash.title': 'Overview',
   'dash.upload': 'Upload videos',
   'dash.series': 'Series',
+  'dash.seriesPublished': '{published} live in the app',
   'dash.publishedOf': '{published} / {total} episodes published',
   'dash.readyVideos': 'Ready videos',
   'dash.processingFailed': 'Processing {processing} · Failed {failed}',
@@ -102,6 +103,7 @@ const en = {
   'series.noMatch': 'No matching series',
   'series.empty': 'No series yet. Create one, then upload its videos.',
   'series.cardPublished': '{published}/{total} published',
+  'series.unpublished': 'Unpublished',
   'form.newTitle': 'New series',
   'form.editTitle': 'Edit "{title}"',
   'form.errTitle': 'Enter a title',
@@ -126,6 +128,7 @@ const en = {
   'form.cast': 'Cast (one per line: name | role)',
   'form.poster': 'Poster image (optional, JPG/PNG/WebP, portrait 3:4)',
   'form.isNew': 'Mark as "New"',
+  'form.published': 'Published (untick to take the series down: hidden from the app with all its episodes)',
 
   // series detail
   'sp.notFound': 'Series not found',
@@ -397,6 +400,7 @@ const zh: Record<MsgKey, string> = {
   'dash.title': '总览',
   'dash.upload': '上传视频',
   'dash.series': '剧集',
+  'dash.seriesPublished': '{published} 部在 App 上架',
   'dash.publishedOf': '{published} / {total} 集已发布',
   'dash.readyVideos': '就绪视频',
   'dash.processingFailed': '处理中 {processing} · 失败 {failed}',
@@ -423,6 +427,7 @@ const zh: Record<MsgKey, string> = {
   'series.noMatch': '没有匹配的剧集',
   'series.empty': '还没有剧集，先新建一部再上传视频。',
   'series.cardPublished': '{published}/{total} 集已发布',
+  'series.unpublished': '已下架',
   'form.newTitle': '新建剧集',
   'form.editTitle': '编辑《{title}》',
   'form.errTitle': '请填写剧名',
@@ -447,6 +452,7 @@ const zh: Record<MsgKey, string> = {
   'form.cast': '演员（每行一个：姓名 | 角色）',
   'form.poster': '海报图片（可选，JPG/PNG/WebP，竖版 3:4）',
   'form.isNew': '标记为「新剧」',
+  'form.published': '上架（取消勾选即下架：整部剧及所有剧集在 App 中隐藏）',
 
   'sp.notFound': '找不到这部剧',
   'sp.crumb': '剧集',

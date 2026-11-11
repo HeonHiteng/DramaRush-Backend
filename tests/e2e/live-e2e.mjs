@@ -9,6 +9,9 @@ const CF = `https://api.cloudflare.com/client/v4/accounts/${e.CLOUDFLARE_ACCOUNT
 const CFH = { Authorization: `Bearer ${e.CLOUDFLARE_STREAM_API_TOKEN}` };
 const SAMPLE = 'https://www.w3schools.com/html/mov_bbb.mp4';
 const EP_FREE = 'crimson-contract-ep1', EP_AD = 'crimson-contract-ep3', EP_COIN = 'crimson-contract-ep4';
+// crimson-contract is a demo series, taken down live (series.published = false). It is published
+// for the duration of the run and its original state restored in the finally block.
+const SERIES = 'crimson-contract';
 
 const results = [];
 function check(name, ok, detail = '') {
@@ -26,7 +29,7 @@ const rest = (path, opts = {}) => call(`${SB}/rest/v1/${path}`, { ...opts, heade
 const fn = (name, jwt, body) => call(`${SB}/functions/v1/${name}`, { method: 'POST', headers: { apikey: ANON, Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const rpcAs = (jwt, name, args = {}) => call(`${SB}/rest/v1/rpc/${name}`, { method: 'POST', headers: { apikey: ANON, Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
 
-const created = { users: [], episodesTouched: {} };
+const created = { users: [], episodesTouched: {}, seriesPublished: null };
 let adminJwt, guestJwt, guestId, memberJwt, memberId;
 const signUpGuest = () => call(`${SB}/auth/v1/signup`, { method: 'POST', headers: { apikey: ANON, 'Content-Type': 'application/json' }, body: JSON.stringify({ data: { provider: 'guest' } }) });
 
@@ -51,6 +54,11 @@ async function uploadVia(jwt, episodeId, bytes) {
 
 try {
   // ---------------------------------------------------------------- setup
+  const seriesRow = (await rest(`series?id=eq.${SERIES}&select=published`)).body?.[0];
+  if (!seriesRow) throw new Error(`series ${SERIES} not found`);
+  created.seriesPublished = seriesRow.published;
+  if (!seriesRow.published) await rest(`series?id=eq.${SERIES}`, { method: 'PATCH', body: JSON.stringify({ published: true }) });
+
   const settings = await call(`${SB}/auth/v1/settings`, { headers: { apikey: ANON } });
   check('anonymous sign-in enabled', settings.body?.external?.anonymous_users === true);
 
@@ -71,7 +79,7 @@ try {
   const replacedVideos = (await rest(`video_assets?episode_id=in.(${EP_FREE},${EP_COIN})&select=provider_uid`)).body.length;
   // A published free episode with no video at all, for the 404 check (null if every one has a video).
   const withVideo = new Set((await rest('video_assets?select=episode_id')).body.map((r) => r.episode_id));
-  const epNoVideo = (await rest('episodes?access=eq.free&published=eq.true&select=id')).body.map((r) => r.id).find((id) => id !== EP_FREE && !withVideo.has(id)) ?? null;
+  const epNoVideo = (await rest('episodes?access=eq.free&published=eq.true&select=id,series!inner(published)&series.published=eq.true')).body.map((r) => r.id).find((id) => id !== EP_FREE && !withVideo.has(id)) ?? null;
 
   const email = `e2e-admin-${Date.now()}@keybox.invalid`;
   const password = crypto.randomUUID() + 'Aa1!';
@@ -263,6 +271,7 @@ try {
   check('script error', false, err.stack);
 } finally {
   // ---------------------------------------------------------------- cleanup
+  if (created.seriesPublished === false) await rest(`series?id=eq.${SERIES}`, { method: 'PATCH', body: JSON.stringify({ published: false }) });
   for (const [id, d] of Object.entries(created.episodesTouched)) await rest(`episodes?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify({ duration_sec: d }) });
   for (const uid of created.users) await call(`${SB}/auth/v1/admin/users/${uid}`, { method: 'DELETE', headers: SVC });
   const leftovers = await rest('video_assets?select=id');

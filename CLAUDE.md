@@ -54,6 +54,11 @@ this repo only; the app (`../DramaRush`, Expo) belongs to the app team — chang
   `ALL_TESTS_PASSED`) and `get_advisors` (security). After function changes: `npm test`.
 - `npm run test:e2e` replaces and then deletes the demo videos of crimson-contract-ep1 / ep4 —
   re-run `npm run seed-demo-videos` afterwards.
+- Series take-down: `series.published` (`20261111120000_series_published.sql`). Non-admins see only
+  published series and only episodes of published series; `can_watch_as` / unlock RPCs refuse the
+  rest. The 8 demo series (crimson-contract etc.) are unpublished live: smoke tests publish the ones
+  they use inside their rolled-back block, and `test:e2e` publishes crimson-contract for the run and
+  restores it in `finally`.
 
 ## Admin console
 

@@ -41,6 +41,7 @@ export function SeriesPage() {
             <Link to="/series">{t('sp.crumb')}</Link> / {series.id}
           </div>
           <h1>{series.title}</h1>
+          {!series.published && <span className="badge amber">{t('series.unpublished')}</span>}
         </div>
         <div className="actions">
           <button className="btn" onClick={() => setEditing(true)}>

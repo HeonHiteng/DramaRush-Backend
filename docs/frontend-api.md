@@ -46,9 +46,11 @@ the old public `episode-videos` bucket.
 The anon key is public by design (it ships inside the app); what protects
 data is Row Level Security. Never put a service-role / secret key in the app.
 
-Already set up on the backend: anonymous (guest) sign-in on, the same 8
-demo series / 54 episodes, and a 10-second demo video on every episode
-(free episodes play right away; locked ones need an unlock).
+Already set up on the backend: anonymous (guest) sign-in on, and a 10-second
+demo video on every seed episode (free episodes play right away; locked ones
+need an unlock). The 8 original demo series are taken down
+(`series.published = false`, see §4) and no longer reach the app; the catalog
+the app sees is the real series the content team has published.
 
 **Test accounts.** Guests: just use the app. Admin (for `/admin`): sign up
 with an email in the app, then ask the backend team to promote that email.
@@ -220,6 +222,12 @@ supabase.from('episodes')
 ```
 
 - Only `published` episodes are returned to users (admins see all) — no client filter needed.
+- `series` has a `published` flag too (take-down / 下架). Non-admins only get rows of series with
+  `published = true`, and only episodes whose series is published; playback-token answers 403
+  `not_entitled` and the unlock RPCs fail with "episode … not found" for an episode of a taken-down
+  series. RLS does the filtering, so no app change is needed — but a series id kept locally (My List,
+  watch history, deep links) can stop resolving: treat a missing series / an empty episode list as
+  "no longer available" rather than an error.
 - `duration_sec` is filled in automatically from the uploaded video.
 - `video_width` / `video_height` (pixels, from Cloudflare) tell landscape from portrait: the app
   letterboxes landscape videos (`contentFit="contain"`) and offers an in-app rotated view.
@@ -306,6 +314,8 @@ Admins (`profiles.is_admin = true`) can still insert/update/delete `series` and
 
 - **New episodes start unpublished.** Add a "Published" toggle
   (`update episodes set published = true`). Publish once the video is ready.
+- Series can be taken down (`update series set published = false`): hidden from users with all
+  their episodes, still visible to admins. New series default to published.
 - `video_uri` is optional now — don't send it.
 - Video status per episode: `supabase.from('video_assets').select('episode_id, status, error_reason, duration_sec, created_at, ready_at')`
   (admins only). `status`: `pending_upload` → `ready` | `error`.

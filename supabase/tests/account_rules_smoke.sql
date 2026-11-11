@@ -34,6 +34,8 @@ begin
   update public.app_config set value = '80' where key = 'playback_max_episodes_per_hour';
   update public.app_config set value = 'true' where key = 'simulated_payments';
   update public.episodes set published = true where id in ('crimson-contract-ep1', 'crimson-contract-ep3', 'crimson-contract-ep4', 'crimson-contract-ep7');
+  -- Demo series are taken down live (20261111120000_series_published.sql); publish them for this test (rolled back).
+  update public.series set published = true where id in ('crimson-contract');
   assert not exists (select 1 from public.app_config where key in ('guest_preview_seconds', 'guest_previews_per_day')),
     'preview settings removed';
 
