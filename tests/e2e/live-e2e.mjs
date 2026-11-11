@@ -8,7 +8,10 @@ const SVC = { apikey: e.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${e.SU
 const CF = `https://api.cloudflare.com/client/v4/accounts/${e.CLOUDFLARE_ACCOUNT_ID}/stream`;
 const CFH = { Authorization: `Bearer ${e.CLOUDFLARE_STREAM_API_TOKEN}` };
 const SAMPLE = 'https://www.w3schools.com/html/mov_bbb.mp4';
-const EP_FREE = 'crimson-contract-ep1', EP_COIN = 'crimson-contract-ep4';
+const EP_FREE = 'crimson-contract-ep1', EP_AD = 'crimson-contract-ep3', EP_COIN = 'crimson-contract-ep4';
+// crimson-contract is a demo series, taken down live (series.published = false). It is published
+// for the duration of the run and its original state restored in the finally block.
+const SERIES = 'crimson-contract';
 
 const results = [];
 function check(name, ok, detail = '') {
@@ -26,7 +29,7 @@ const rest = (path, opts = {}) => call(`${SB}/rest/v1/${path}`, { ...opts, heade
 const fn = (name, jwt, body) => call(`${SB}/functions/v1/${name}`, { method: 'POST', headers: { apikey: ANON, Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const rpcAs = (jwt, name, args = {}) => call(`${SB}/rest/v1/rpc/${name}`, { method: 'POST', headers: { apikey: ANON, Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
 
-const created = { users: [], episodesTouched: {} };
+const created = { users: [], episodesTouched: {}, seriesPublished: null };
 let adminJwt, guestJwt, guestId, memberJwt, memberId;
 const signUpGuest = () => call(`${SB}/auth/v1/signup`, { method: 'POST', headers: { apikey: ANON, 'Content-Type': 'application/json' }, body: JSON.stringify({ data: { provider: 'guest' } }) });
 
@@ -51,6 +54,11 @@ async function uploadVia(jwt, episodeId, bytes) {
 
 try {
   // ---------------------------------------------------------------- setup
+  const seriesRow = (await rest(`series?id=eq.${SERIES}&select=published`)).body?.[0];
+  if (!seriesRow) throw new Error(`series ${SERIES} not found`);
+  created.seriesPublished = seriesRow.published;
+  if (!seriesRow.published) await rest(`series?id=eq.${SERIES}`, { method: 'PATCH', body: JSON.stringify({ published: true }) });
+
   const settings = await call(`${SB}/auth/v1/settings`, { headers: { apikey: ANON } });
   check('anonymous sign-in enabled', settings.body?.external?.anonymous_users === true);
 
@@ -71,7 +79,7 @@ try {
   const replacedVideos = (await rest(`video_assets?episode_id=in.(${EP_FREE},${EP_COIN})&select=provider_uid`)).body.length;
   // A published free episode with no video at all, for the 404 check (null if every one has a video).
   const withVideo = new Set((await rest('video_assets?select=episode_id')).body.map((r) => r.episode_id));
-  const epNoVideo = (await rest('episodes?access=eq.free&published=eq.true&select=id')).body.map((r) => r.id).find((id) => id !== EP_FREE && !withVideo.has(id)) ?? null;
+  const epNoVideo = (await rest('episodes?access=eq.free&published=eq.true&select=id,series!inner(published)&series.published=eq.true')).body.map((r) => r.id).find((id) => id !== EP_FREE && !withVideo.has(id)) ?? null;
 
   const email = `e2e-admin-${Date.now()}@keybox.invalid`;
   const password = crypto.randomUUID() + 'Aa1!';
@@ -127,25 +135,36 @@ try {
 
   // ---------------------------------------------------------------- playback
   const p1 = await fn('playback-token', guestJwt, { episode_id: EP_FREE });
-  check('guest gets a preview token for a free episode', p1.status === 200 && !!p1.body.hls_url && p1.body.preview_seconds === 15, `HTTP ${p1.status} ${JSON.stringify(p1.body).slice(0, 120)}`);
+  check('guest gets a full token for a free episode', p1.status === 200 && !!p1.body.hls_url && !('preview_seconds' in p1.body), `HTTP ${p1.status} ${JSON.stringify(p1.body).slice(0, 120)}`);
   if (p1.status === 200) {
     check('watermark code returned', /^[2-9A-HJ-NP-Z]{7}$/.test(p1.body.watermark_code ?? ''), p1.body.watermark_code);
     const m = await call(p1.body.hls_url);
     check('HLS manifest plays with token', m.status === 200, `HTTP ${m.status}`);
     const ttl = (Date.parse(p1.body.expires_at) - Date.now()) / 1000;
-    check('guest preview token expires in ~30 s', ttl > 15 && ttl <= 30, `${Math.round(ttl)}s`);
+    check('guest token expires in ~15 minutes', Math.round(ttl) >= 840 && Math.round(ttl) <= 900, `${Math.round(ttl)}s`);
   }
   const pm = await fn('playback-token', memberJwt, { episode_id: EP_FREE });
   check('member gets a full token for a free episode', pm.status === 200 && !('preview_seconds' in pm.body), `HTTP ${pm.status} ${JSON.stringify(pm.body).slice(0, 120)}`);
   if (pm.status === 200) {
     const ttl = (Date.parse(pm.body.expires_at) - Date.now()) / 1000;
-    check('member token expires in ~15 minutes', ttl > 840 && ttl <= 900, `${Math.round(ttl)}s`);
+    check('member token expires in ~15 minutes', Math.round(ttl) >= 840 && Math.round(ttl) <= 900, `${Math.round(ttl)}s`);
   }
   const bare = await call(`https://${e.CLOUDFLARE_STREAM_CUSTOMER_CODE}.cloudflarestream.com/${u1.up.body.uid}/manifest/video.m3u8`);
   check('video ID without token is refused', bare.status === 401, `HTTP ${bare.status}`);
 
   const pg4 = await fn('playback-token', guestJwt, { episode_id: EP_COIN });
   check('guest paid episode -> 403 account_required', pg4.status === 403 && pg4.body.error === 'account_required', `HTTP ${pg4.status} ${JSON.stringify(pg4.body)}`);
+  // Guests may unlock ad episodes (redeem_ad_reward), then watch them.
+  const pgAd = await fn('playback-token', guestJwt, { episode_id: EP_AD });
+  check('guest ad episode before the ad -> 403 not_entitled', pgAd.status === 403 && pgAd.body.error === 'not_entitled', `HTTP ${pgAd.status} ${JSON.stringify(pgAd.body)}`);
+  const guestAd = await rpcAs(guestJwt, 'redeem_ad_reward', { p_episode_id: EP_AD });
+  check('guest ad unlock (redeem_ad_reward) -> true', guestAd.body === true, `HTTP ${guestAd.status} ${JSON.stringify(guestAd.body)}`);
+  if (withVideo.has(EP_AD)) {
+    const pgAd2 = await fn('playback-token', guestJwt, { episode_id: EP_AD });
+    check('guest ad-unlocked episode -> token', pgAd2.status === 200 && !('preview_seconds' in pgAd2.body), `HTTP ${pgAd2.status} ${JSON.stringify(pgAd2.body).slice(0, 120)}`);
+  } else {
+    console.log(`SKIP  guest ad-unlocked episode -> token  — ${EP_AD} has no video`);
+  }
   const p4 = await fn('playback-token', memberJwt, { episode_id: EP_COIN });
   check('locked coin episode refused (403 not_entitled)', p4.status === 403 && p4.body.error === 'not_entitled', `HTTP ${p4.status} ${JSON.stringify(p4.body)}`);
   if (epNoVideo) {
@@ -170,6 +189,38 @@ try {
   const peek = await call(`${SB}/rest/v1/video_assets?select=provider_uid`, { headers: { apikey: ANON, Authorization: `Bearer ${guestJwt}` } });
   check('guest cannot read video IDs', Array.isArray(peek.body) ? peek.body.length === 0 : peek.status >= 400, `HTTP ${peek.status} ${JSON.stringify(peek.body).slice(0, 80)}`);
 
+  // ---------------------------------------------------------------- device guests (guest-session)
+  // Two calls with one device key = one account (what a reinstall looks like); another key = another
+  // account. Each run creates 2 device guests from this machine's IP (cap: guest_new_per_ip_per_day).
+  const deviceKey = `e2e-${crypto.randomUUID()}`;
+  const gs1 = await fn('guest-session', ANON, { device_key: deviceKey });
+  if (gs1.body?.user_id) created.users.push(gs1.body.user_id);
+  check('guest-session creates a device guest', gs1.status === 200 && !!gs1.body.access_token && !!gs1.body.refresh_token && gs1.body.created === true,
+    `HTTP ${gs1.status} ${JSON.stringify(gs1.body).slice(0, 120)}`);
+  const gs2 = await fn('guest-session', ANON, { device_key: deviceKey });
+  check('same device key -> same guest account', gs2.status === 200 && !!gs2.body.user_id && gs2.body.user_id === gs1.body.user_id && gs2.body.created === false,
+    `HTTP ${gs2.status} ${gs1.body?.user_id} vs ${gs2.body?.user_id}`);
+  if (gs2.status === 200) {
+    const dgJwt = gs2.body.access_token;
+    const dgWallet = await call(`${SB}/rest/v1/wallets?select=balance`, { headers: { apikey: ANON, Authorization: `Bearer ${dgJwt}` } });
+    check('device guest has 0 coins', dgWallet.body?.[0]?.balance === 0, JSON.stringify(dgWallet.body));
+    const dgProfile = await call(`${SB}/rest/v1/profiles?select=provider,display_name`, { headers: { apikey: ANON, Authorization: `Bearer ${dgJwt}` } });
+    check('device guest profile is a guest', dgProfile.body?.[0]?.provider === 'guest' && dgProfile.body?.[0]?.display_name === 'Guest Viewer', JSON.stringify(dgProfile.body));
+    const dgFree = await fn('playback-token', dgJwt, { episode_id: EP_FREE });
+    check('device guest free episode -> full token', dgFree.status === 200 && !('preview_seconds' in dgFree.body), `HTTP ${dgFree.status} ${JSON.stringify(dgFree.body).slice(0, 120)}`);
+    const dgCoin = await fn('playback-token', dgJwt, { episode_id: EP_COIN });
+    check('device guest paid episode -> 403 account_required', dgCoin.status === 403 && dgCoin.body.error === 'account_required', `HTTP ${dgCoin.status} ${JSON.stringify(dgCoin.body)}`);
+    const dgMission = await rpcAs(dgJwt, 'claim_daily_mission');
+    check('device guest daily mission -> account_required', dgMission.status >= 400 && dgMission.body?.message === 'account_required', `HTTP ${dgMission.status} ${JSON.stringify(dgMission.body)}`);
+  }
+  const gs3 = await fn('guest-session', ANON, { device_key: `e2e-${crypto.randomUUID()}` });
+  if (gs3.body?.user_id) created.users.push(gs3.body.user_id);
+  check('another device key -> another guest account', gs3.status === 200 && !!gs3.body.user_id && gs3.body.user_id !== gs1.body?.user_id, `HTTP ${gs3.status} ${JSON.stringify(gs3.body).slice(0, 120)}`);
+  const gsBad = await fn('guest-session', ANON, { device_key: 'short' });
+  const gsEmpty = await fn('guest-session', ANON, {});
+  check('guest-session invalid body -> 400 bad_request', gsBad.status === 400 && gsBad.body?.error === 'bad_request' && gsEmpty.status === 400,
+    `HTTP ${gsBad.status} ${JSON.stringify(gsBad.body)} / ${gsEmpty.status}`);
+
   // ---------------------------------------------------------------- replacement upload
   const u3 = await uploadVia(adminJwt, EP_FREE, bytes);
   const r3 = await waitForAsset(u3.up.body.uid);
@@ -181,7 +232,7 @@ try {
   check('old video deleted from Cloudflare', oldCf.status === 404, `HTTP ${oldCf.status}`);
 
   // ---------------------------------------------------------------- rate limit
-  const granted = (await rest(`playback_events?user_id=eq.${memberId}&decision=in.(granted,preview)&select=id`)).body.length;
+  const granted = (await rest(`playback_events?user_id=eq.${memberId}&decision=eq.granted&select=id`)).body.length;
   await rest('app_config?key=eq.playback_max_tokens_per_10min', { method: 'PATCH', body: JSON.stringify({ value: granted + 2 }) });
   const codes = [];
   for (let i = 0; i < 4; i++) codes.push((await fn('playback-token', memberJwt, { episode_id: EP_FREE })).body.error ?? 'ok');
@@ -220,6 +271,7 @@ try {
   check('script error', false, err.stack);
 } finally {
   // ---------------------------------------------------------------- cleanup
+  if (created.seriesPublished === false) await rest(`series?id=eq.${SERIES}`, { method: 'PATCH', body: JSON.stringify({ published: false }) });
   for (const [id, d] of Object.entries(created.episodesTouched)) await rest(`episodes?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify({ duration_sec: d }) });
   for (const uid of created.users) await call(`${SB}/auth/v1/admin/users/${uid}`, { method: 'DELETE', headers: SVC });
   const leftovers = await rest('video_assets?select=id');

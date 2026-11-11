@@ -15,7 +15,7 @@ export const CUSTOMER_CODE_RE = /^customer-[a-z0-9]+$/;
 
 /** Cloudflare caps token lifetime at 24h. */
 const MAX_TTL_SECONDS = 24 * 3600;
-/** Guest previews use preview_seconds + 15 s (20 s at the smallest allowed preview). */
+/** Lower bound on the token lifetime (playback_token_ttl_seconds is at least 60 anyway). */
 const MIN_TTL_SECONDS = 20;
 
 export interface SigningKey {

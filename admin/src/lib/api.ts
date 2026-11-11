@@ -31,6 +31,8 @@ export interface Series {
   cast_members: CastMember[];
   popularity: number;
   is_new: boolean;
+  /** false = taken down (下架): hidden from the app with all its episodes; admins still see it. */
+  published: boolean;
   poster_image_uri: string | null;
 }
 
@@ -61,6 +63,7 @@ export interface VideoAsset {
 
 export interface DashboardStats {
   series: number;
+  series_published: number;
   episodes_total: number;
   episodes_published: number;
   videos_ready: number;

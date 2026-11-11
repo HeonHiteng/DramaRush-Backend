@@ -6,10 +6,11 @@
  * enforces rate limits, abuse blocks and the daily cost budget — and only
  * then signs a short-lived Cloudflare Stream token locally.
  *
- * Guests (anonymous sessions) only get previews of free episodes: the 200
- * body then carries preview_seconds and the token lives preview_seconds + 15 s.
+ * Guests (device guests and anonymous sessions) watch free episodes and
+ * episodes they unlocked with an ad; coin / subscriber episodes give them
+ * 403 account_required.
  *
- * 200 { episode_id, hls_url, dash_url, thumbnail_url, expires_at, watermark_code, preview_seconds? }
+ * 200 { episode_id, hls_url, dash_url, thumbnail_url, expires_at, watermark_code }
  * 401 not_authenticated · 403 not_entitled | account_required · 404 unavailable
  * 429 rate_limited | blocked · 503 budget · 500 server_error
  */
@@ -65,7 +66,6 @@ Deno.serve(async (req) => {
       provider_uid?: string;
       watermark_code?: string;
       ttl_seconds?: number;
-      preview_seconds?: number;
     };
     if (!decision.allowed) {
       const reason = decision.reason ?? "not_entitled";
@@ -87,7 +87,6 @@ Deno.serve(async (req) => {
       thumbnail_url: urls.thumbnailUrl,
       expires_at: new Date(urls.expiresAt * 1000).toISOString(),
       watermark_code: decision.watermark_code ?? null,
-      ...(typeof decision.preview_seconds === "number" ? { preview_seconds: decision.preview_seconds } : {}),
     });
   } catch (err) {
     console.error("playback-token error", err instanceof Error ? err.message : err);

@@ -49,6 +49,13 @@ export function serviceClient(): SupabaseClient {
   });
 }
 
+/** Fresh anon-key client with no caller, e.g. to sign a user in with a password. */
+export function anonClient(): SupabaseClient {
+  return createClient(env("SUPABASE_URL"), env("SUPABASE_ANON_KEY"), {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
 /** Client that acts as the caller (RLS applies), for checks like is_admin(). */
 export function callerClient(req: Request): SupabaseClient {
   return createClient(env("SUPABASE_URL"), env("SUPABASE_ANON_KEY"), {

@@ -69,6 +69,7 @@ function SeriesCard({ series, counts, delay }: { series: Series; counts?: { tota
         <strong>{series.title}</strong>
         <div className="row">
           <span className="mono">{t('series.cardPublished', { published: counts?.published ?? 0, total: counts?.total ?? 0 })}</span>
+          {!series.published && <span className="badge amber">{t('series.unpublished')}</span>}
           {series.is_new && <span className="badge coral plain" style={{ color: 'var(--coral)', borderColor: 'rgba(255,90,95,.4)' }}>NEW</span>}
         </div>
         <div className="row muted mono" style={{ fontSize: 11 }}>
