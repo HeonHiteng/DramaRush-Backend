@@ -5,7 +5,18 @@ import { useI18n } from '../lib/i18n';
 import { Modal } from '../ui';
 
 /** Same lists the app filters by (DramaRush/src/types/content.ts). */
-export const GENRES = ['Romance', 'Suspense', 'Revenge', 'Comedy', 'Fantasy', 'Youth', 'Mystery', 'Workplace'];
+export const GENRES = [
+  'Malay Movies',
+  'Chinese Dramas',
+  'Korean Dramas',
+  'Movie Highlights',
+  'AI Drama',
+  'AI Animation',
+  'Anime & Cartoons',
+  'Horror & Mystery',
+  'Romance',
+  'Gaming',
+];
 export const LANGUAGES = ['English', 'Spanish', 'Korean', 'Portuguese'];
 
 const BLANK: Series = {
